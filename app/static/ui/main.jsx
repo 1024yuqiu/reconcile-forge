@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke, view } from '@forge/bridge';
 import { DEFAULT_RULES, STATUSES } from '../../src/reconcile.js';
-import { suggestFields, PASSES } from '../../src/multi.js';
+import { mappingSuggestions, PASSES } from '../../src/multi.js';
 import './style.css';
 const labels = { matched: 'Matched', mismatch: 'Value mismatch', 'only-a': 'Only in base', 'only-b': 'Missing from base', duplicate: 'Duplicate keys' };
 const isMock = import.meta.env.MODE === 'mock';
@@ -26,9 +26,10 @@ function App() {
   const [project, setProject] = useState(''), [issueType, setIssueType] = useState(''), [parent, setParent] = useState(''), [grouped, setGrouped] = useState(false), [confirm, setConfirm] = useState(false), [selected, setSelected] = useState([]);
   const [hideReviewed, setHideReviewed] = useState(false), [reviewId, setReviewId] = useState(''), [reviewStatus, setReviewStatus] = useState('Explained'), [reviewNote, setReviewNote] = useState('');
   const [originalLayout, setOriginalLayout] = useState(false), [statementView, setStatementView] = useState(false);
+  const [mappingAdvice, setMappingAdvice] = useState([]), [mappingConfirmed, setMappingConfirmed] = useState(false);
   async function action(fn) { setBusy(true); setError(''); setNotice(''); try { await fn(); } catch (e) { setError(e.message); } finally { setBusy(false); } }
   function invalidate() { setResult(null); setSelected([]); setConfirm(false); setReviewId(''); }
-  function initialConfig(next) { return { ...suggestFields(next), baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: false }, aggregate: next.map(() => false), acceptedPairs: [] }; }
+  function initialConfig(next) { const suggestions = mappingSuggestions(next); setMappingAdvice(suggestions.advice); setMappingConfirmed(false); return { ...suggestions.proposed, baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: false }, aggregate: next.map(() => false), acceptedPairs: [] }; }
   async function load(nextSources) {
     const next = [];
     for (const s of nextSources) {
@@ -43,9 +44,10 @@ function App() {
     if (data.attachments.length >= 2) { const next = data.attachments.slice(0, 2).map(a => ({ id: a.id })); setSources(next); await load(next); }
   }); }, []);
   function changeSource(i, value) { setSources(s => s.map((v, j) => i === j ? value : v)); setFiles(f => f.map((v, j) => i === j ? null : v)); invalidate(); }
-  function changeConfig(next) { setConfig(next); invalidate(); }
+  function changeConfig(next) { setConfig(next); setMappingConfirmed(false); invalidate(); }
   function updateField(id, patch) { changeConfig({ ...config, fields: config.fields.map(f => f.id === id ? { ...f, ...patch } : f) }); }
   async function run(nextConfig = config) {
+    if (!mappingConfirmed) throw new Error('Review and confirm column mapping before running. Low-confidence columns need a manual choice.');
     const output = await workerTask({ operation: 'run', files, config: nextConfig });
     if (sources.every(s => !s.local)) {
       const compact = { ...output, results: output.results.filter(r => r.status !== 'matched').slice(0, 200).map(r => ({ ...r, entries: r.entries.map(e => e ? { components: e.components.map(c => ({ values: c.values })) } : null) })) };
@@ -71,7 +73,7 @@ function App() {
       (t.mappings[0].compare || []).forEach((h, i) => fields.push({ id: `text-${i}`, name: h, type: 'text', columns: t.mappings.map(m => m.compare[i]), ...t.rules }));
       setConfig({ ...initialConfig(files), keys: t.mappings.map(m => m.keys), fields, keyRules: t.rules });
     }
-    setTemplateName(t.name); invalidate();
+    setTemplateName(t.name); setMappingConfirmed(true); invalidate();
   }
   const filtered = result?.results.filter(r => (filter === 'all' || r.status === filter) && (!hideReviewed || !r.review) && (!statementView || r.pairs.some(p => ['only-a', 'only-b'].includes(p.status))) && JSON.stringify(r).toLowerCase().includes(search.toLowerCase())) || [];
   const savedIds = new Set(result?.results.filter(r => r.signature).map(r => r.id));
@@ -98,7 +100,8 @@ function App() {
     </div>)}</div>
     <div className="source-actions"><button disabled={busy || sources.some(s => !s.local && s.kind !== 'jql' && !s.id)} onClick={() => action(() => load(sources))}>Load selected sources</button><button disabled={busy || sources.length === 5} onClick={() => { setSources(s => [...s, { id: '' }]); setFiles(f => [...f, null]); invalidate(); }}>Add table</button><span className="hint">2–5 CSV / XLSX tables · Attached file limit 2 MB</span></div></section>
     {files.every(Boolean) && config && <section className="card mapping"><h2><span className="step">2</span> Map columns & set rules</h2>
-      <div className="template"><label>Project / space template<select aria-label="Saved template" disabled={busy} value="" onChange={e => { const t = boot.templates.find(t => t.name === e.target.value); if (t) action(() => applyTemplate(t)); }}><option value="">Select saved rules</option>{boot?.templates.map(t => <option key={t.name}>{t.name}</option>)}</select></label><label>Template name<input value={templateName} maxLength={80} onChange={e => { setTemplateName(e.target.value); invalidate(); }}/></label><button disabled={busy} onClick={() => action(async () => { const templates = await invoke('saveTemplate', { name: templateName, config, sources: sources.map(s => ({ sheet: s.sheet })) }); setBoot({ ...boot, templates }); setNotice('Template saved for this project or space.'); })}>Save template</button></div>
+      <div className="template"><label>Project / space template<select aria-label="Saved template" disabled={busy} value="" onChange={e => { const t = boot.templates.find(t => t.name === e.target.value); if (t) action(() => applyTemplate(t)); }}><option value="">Select saved rules</option>{boot?.templates.map(t => <option key={t.name}>{t.name}</option>)}</select></label><label>Template name<input value={templateName} maxLength={80} onChange={e => { setTemplateName(e.target.value); invalidate(); }}/></label><button disabled={busy || !mappingConfirmed} onClick={() => action(async () => { const templates = await invoke('saveTemplate', { name: templateName, config, sources: sources.map(s => ({ sheet: s.sheet })) }); setBoot({ ...boot, templates }); setNotice('Template saved for this project or space.'); })}>Save template</button></div>
+      <div className="card" aria-label="Column mapping suggestions"><h3>Column mapping suggestions</h3><p>{mappingConfirmed ? 'Column mapping confirmed. Selecting a saved template confirms its previously saved mapping.' : 'Proposals only: review columns and sample values, then confirm. Low-confidence proposals are left blank for a manual choice.'}</p>{!mappingConfirmed && <ul>{mappingAdvice.map((a, i) => <li key={i}>Table {letter(a.table)} · {a.target} → {a.source} · <b>{a.confidence}</b> · {a.reason}</li>)}</ul>}<button disabled={busy || mappingConfirmed || config.keys.some(keys => keys.some(key => !key)) || config.fields.some(f => f.type !== 'ignore' && f.columns.some(column => !column))} onClick={() => { setMappingConfirmed(true); setNotice('Column mapping confirmed. You can now save these rules or run reconciliation.'); }}>Confirm column mapping</button></div>
       <label className="base-picker">Base table<select aria-label="Base table" value={config.baseIndex} onChange={e => changeConfig({ ...config, baseIndex: Number(e.target.value), acceptedPairs: [] })}>{files.map((f, i) => <option key={i} value={i}>{letter(i)} · {f.name}</option>)}</select></label>
       <div className="mapping-grid">{files.map((f, i) => <div key={i}><h3>Table {letter(i)} mapping</h3><label>Key columns <small>Ctrl / ⌘ to select a composite key</small><select multiple aria-label={`Key columns ${letter(i)}`} value={config.keys[i]} onChange={e => changeConfig({ ...config, keys: config.keys.map((k, j) => j === i ? Array.from(e.target.selectedOptions, o => o.value) : k), acceptedPairs: [] })}>{f.headers.map(h => <option key={h}>{h}</option>)}</select></label><label className="check"><input type="checkbox" aria-label={`Aggregate ${letter(i)}`} checked={config.aggregate[i]} onChange={e => changeConfig({ ...config, aggregate: config.aggregate.map((v, j) => j === i ? e.target.checked : v) })}/>Sum numeric fields by key; retain component rows</label></div>)}</div>
       <div className="rules">{[['trim', 'Trim keys'], ['caseFold', 'Ignore key case'], ['fullWidth', 'Normalize full-width keys'], ['leadingZeros', 'Ignore leading zeros in keys']].map(([key, title]) => <label className="check" key={key}><input type="checkbox" checked={config.keyRules[key]} onChange={e => changeConfig({ ...config, keyRules: { ...config.keyRules, [key]: e.target.checked } })}/>{title}</label>)}</div>
@@ -109,7 +112,7 @@ function App() {
         {f.type === 'date' && <div className="rules"><label>Date ± days<input aria-label={`Date ± days ${f.name}`} type="number" min="0" max="365" value={f.days ?? 0} onChange={e => updateField(f.id, { days: e.target.value })}/></label><label>Accepted formats<input aria-label={`Accepted formats ${f.name}`} value={f.formats || ''} placeholder="YYYY-MM-DD,DD/MM/YYYY" onChange={e => updateField(f.id, { formats: e.target.value })}/></label></div>}
         {f.type === 'text' && <div className="rules">{[['trim', 'Trim'], ['caseFold', 'Ignore case'], ['fullWidth', 'Normalize full-width'], ['ignorePunctuation', 'Ignore punctuation']].map(([key, title]) => <label className="check" key={key}><input type="checkbox" checked={Boolean(f[key])} onChange={e => updateField(f.id, { [key]: e.target.checked })}/>{title}</label>)}</div>}
       </div>)}<button disabled={config.fields.length >= 50} onClick={() => changeConfig({ ...config, fields: [...config.fields, { id: crypto.randomUUID(), name: 'New field', type: 'exact', columns: files.map(() => '') }] })}>Add field rule</button></div>
-      <div className="run-bar"><p>Duplicates need review unless aggregation is enabled. Numeric fields are summed; conflicting text/date fields stay flagged.</p><button className="primary" disabled={busy} onClick={() => action(() => run())}>{busy ? 'Working…' : 'Run reconciliation'}</button></div></section>}
+      <div className="run-bar"><p>Duplicates need review unless aggregation is enabled. Numeric fields are summed; conflicting text/date fields stay flagged.</p><button className="primary" disabled={busy || !mappingConfirmed} onClick={() => action(() => run())}>{busy ? 'Working…' : 'Run reconciliation'}</button></div></section>}
     {result && <section className="results"><div className="section-title"><div><p className="eyebrow">RECONCILIATION COMPLETE</p><h2>Every difference, accounted for.</h2><p>{result.inputRows.map((n, t) => `${n.toLocaleString()} rows in ${letter(t)}`).join(' · ')} · Counts below are unique keys</p></div><div><label className="check"><input type="checkbox" checked={originalLayout} onChange={e => setOriginalLayout(e.target.checked)}/>Include original table layouts</label><button disabled={busy} onClick={() => action(async () => download(await workerTask({ operation: 'export', run: result, files, options: { originalLayout } }), 'reconciliation.xlsx'))}>Export XLSX ↓</button></div></div>
       <div className="pass-strip">{PASSES.map((p, i) => <span key={p}>{i + 1}. {p}</span>)}</div>
       <div className="metrics">{STATUSES.map(s => <button key={s} className={`metric ${s} ${filter === s ? 'selected' : ''}`} onClick={() => { setFilter(s); setPage(0); }}><span>{labels[s]}</span><strong>{result.summary[s]}</strong></button>)}</div>

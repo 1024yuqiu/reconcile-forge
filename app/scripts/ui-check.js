@@ -5,11 +5,13 @@ import ExcelJS from 'exceljs';
 await mkdir('logs', { recursive: true });
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const errors = [], evidence = [];
+async function confirmMapping(page) { const button = page.getByRole('button', { name: 'Confirm column mapping', exact: true }); if (await button.isEnabled()) await button.click(); }
 try {
   for (const width of [1440, 375]) {
     const context = await browser.newContext({ viewport: { width, height: 1000 }, acceptDownloads: true });
     const page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', e => errors.push(e.message));
     await page.goto('http://127.0.0.1:4178/');
+    await confirmMapping(page);
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).click();
     await page.locator('.metric strong').first().waitFor();
     assert.deepEqual(await page.locator('.metric strong').allTextContents(), ['270', '18', '10', '10', '1']);
@@ -36,12 +38,14 @@ try {
     await page.getByLabel('Ignore leading zeros in keys', { exact: true }).check();
     await page.getByLabel('Aggregate C', { exact: true }).check();
     await page.getByLabel('Template name', { exact: true }).fill(`V3 synthetic ${width}`);
+    await confirmMapping(page);
     await page.getByRole('button', { name: 'Save template', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Template saved' }).waitFor();
     await page.getByLabel('Worksheet B', { exact: true }).selectOption('Read me');
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).waitFor();
     await page.getByLabel('Saved template', { exact: true }).selectOption({ label: `V3 synthetic ${width}` });
     await page.waitForFunction(() => document.querySelector('[aria-label="Worksheet B"]').value === 'Transactions' && document.querySelector('[aria-label="Aggregate C"]').checked);
+    await confirmMapping(page);
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).click();
     await page.locator('.metric strong').first().waitFor();
     assert.deepEqual(await page.locator('.metric strong').allTextContents(), ['3', '1', '2', '2', '0']);
@@ -50,6 +54,7 @@ try {
     await page.getByLabel('Review note', { exact: true }).fill('Synthetic fee explained');
     await page.getByRole('button', { name: 'Save review', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Review remembered' }).waitFor();
+    await confirmMapping(page);
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).click();
     await page.getByText('Explained previously', { exact: true }).waitFor();
     await page.getByLabel('Hide previously explained / ignored', { exact: true }).check();
@@ -77,6 +82,7 @@ try {
   await local.getByLabel('Worksheet B', { exact: true }).selectOption('Transactions');
   await local.getByRole('button', { name: 'Run reconciliation', exact: true }).waitFor();
   await local.getByLabel('Ignore leading zeros in keys', { exact: true }).check();
+    await confirmMapping(local);
   await local.getByRole('button', { name: 'Run reconciliation', exact: true }).click();
   await local.locator('.metric strong').first().waitFor();
   assert.deepEqual(await local.locator('.metric strong').allTextContents(), ['4', '1', '1', '1', '0']);

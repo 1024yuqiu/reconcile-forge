@@ -21,6 +21,39 @@ export function suggestFields(files, baseIndex = 0) {
   return { keys, fields };
 }
 
+export function mappingSuggestions(files, baseIndex = 0) {
+  const proposed = suggestFields(files, baseIndex), advice = [];
+  const samples = (file, header) => file.rows.slice(0, 20).map(row => row[header]).filter(v => v !== '' && v !== null && v !== undefined);
+  const sampleType = values => {
+    if (!values.length) return 'text';
+    if (values.filter(v => amountInCents(v) !== null).length / values.length >= 0.8) return 'number';
+    if (values.filter(v => configuredDate(v, 'YYYY-MM-DD,YYYY/MM/DD,YYYY年MM月DD日,MM/DD/YYYY') !== null).length / values.length >= 0.8) return 'date';
+    return 'text';
+  };
+  function propose(header, type, table, target) {
+    if (table === baseIndex) { advice.push({ table, target, source: header, confidence: 'High', score: 100, reason: 'Reference column; confirm its role' }); return header; }
+    const candidates = files[table].headers.map(source => {
+      const a = columnName(header), b = columnName(source), kind = semantic(header);
+      const nameScore = a === b ? 80 : Object.hasOwn(SYNONYMS, kind) && kind === semantic(source) ? 65 : editDistance(a, b) <= 2 ? 55 : a.includes(b) || b.includes(a) ? 45 : 0;
+      const values = samples(files[table], source);
+      const typeMatches = type === 'key' ? values.length > 0 && new Set(values.map(String)).size / values.length >= 0.8 : sampleType(values) === type;
+      return { source, score: nameScore + (typeMatches ? 20 : 0), reason: `${nameScore ? 'Column-name similarity' : 'Weak column-name evidence'} + ${typeMatches ? 'compatible' : 'conflicting'} sample type` };
+    }).sort((a, b) => b.score - a.score);
+    const best = candidates[0], ambiguous = candidates[1] && best.score - candidates[1].score < 10;
+    const confidence = ambiguous || best.score < 60 ? 'Low' : best.score >= 85 ? 'High' : 'Medium';
+    advice.push({ table, target, ...best, confidence, ...(ambiguous ? { reason: 'Several columns have similar evidence; choose manually' } : {}) });
+    return confidence === 'Low' ? '' : best.source;
+  }
+  const key = proposed.keys[baseIndex][0];
+  proposed.keys = files.map((_, t) => [propose(key, 'key', t, 'Key')]);
+  proposed.fields = proposed.fields.map(field => {
+    const header = field.columns[baseIndex], kind = semantic(header);
+    const type = kind === 'amount' ? 'number' : kind === 'date' ? 'date' : sampleType(samples(files[baseIndex], header));
+    return { ...field, type, columns: files.map((_, t) => propose(header, type, t, field.name)) };
+  });
+  return { proposed, advice };
+}
+
 export function configuredDate(value, formats) {
   if (value instanceof Date || typeof value === 'number') return dateInDays(value);
   if (!formats?.trim()) return dateInDays(value);
