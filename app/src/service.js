@@ -33,6 +33,12 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
   }
   const linksKey = record => `links:${record.source.kind}:${record.source.id}:${digest(record.templateName)}`;
   const configIdentity = record => digest(stableStringify([record.rules, record.mappings]));
+  async function appendAudit(record, event) {
+    record.audit = [...(record.audit || []), { when: now(), ...event }].slice(-100);
+    while (record.audit.length > 1 && new TextEncoder().encode(JSON.stringify(record)).byteLength > 180000) record.audit.shift();
+    if (new TextEncoder().encode(JSON.stringify(record)).byteLength > 180000) throw new Error('Audit metadata exceeds the saved-run budget. Split the exports.');
+    await store.set(`run:${record.id}`, record);
+  }
   async function trackIssue(record, reference) {
     const key = linksKey(record), refs = await store.get(key) || [];
     if (refs.some(r => r.issue === reference.issue)) return;
@@ -70,22 +76,27 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
   async function persist(s, payload, result, files, serverVerified = false) {
     const templateName = payload.templateName || '';
     if (templateName.length > 80) throw new Error('Template name must be at most 80 characters.');
+    const note = payload.note ?? '';
+    if (typeof note !== 'string' || note.length > 500) throw new Error('Run annotation must be at most 500 characters.');
     const reviewNamespace = `reviews:${s.namespace}:${digest(templateName)}`;
     const reviews = templateName ? await store.get(reviewNamespace) || [] : [];
     if (result.version === 3) result.results = result.results.map(r => { const signature = digest(stableStringify([payload.config, exceptionSignature(r)])); return { ...r, signature, review: reviews.find(v => v.signature === signature) || null }; });
     const exceptions = result.results.filter(r => r.status !== 'matched');
     const record = { id: uuid(), when: now(), who: s.accountId, source: s, files: files.map(f => f.name), sources: payload.sources, rules: payload.rules || payload.config, mappings: payload.mappings || payload.config.keys, config: payload.config, templateName, reviewNamespace, summary: result.summary, inputRows: result.inputRows, exceptions: exceptions.slice(0, MAX_SAVED_EXCEPTIONS).map(r => ({ id: r.id, key: r.key, label: r.label.slice(0, 200), status: r.status, diffs: JSON.stringify(r.diffs).slice(0, 2000), counts: r.counts, ...(r.signature ? { signature: r.signature, review: r.review, pass: r.pass } : {}) })), exceptionCount: result.version === 3 ? Object.entries(result.summary).filter(([s]) => s !== 'matched').reduce((n, [, v]) => n + v, 0) : exceptions.length };
+    record.templateVersion = digest(stableStringify([record.templateName, record.rules, record.mappings]));
+    record.note = note;
+    record.audit = [{ event: 'run', when: record.when, who: record.who, templateVersion: record.templateVersion, note }];
     if (new TextEncoder().encode(JSON.stringify(record)).byteLength > 180000) throw new Error('Run metadata is too large to save. Reduce mapped fields or split the source.');
     // Full rows remain transient. History contains counts and at most 200 compact exceptions.
     await store.set(`run:${record.id}`, record);
     const historyKey = `history:${s.kind}:${s.id}`;
     const history = await store.get(historyKey) || [];
-    await store.set(historyKey, [{ id: record.id, when: record.when, who: record.who, files: record.files, summary: record.summary }, ...history].slice(0, 20));
+    await store.set(historyKey, [{ id: record.id, when: record.when, who: record.who, templateVersion: record.templateVersion, files: record.files, summary: record.summary }, ...history].slice(0, 20));
     for (const old of history.slice(19)) await store.delete(`run:${old.id}`);
     let resolution;
     try { resolution = await reconcileLinked(s, record, serverVerified ? result : null); }
     catch { resolution = { readyToClose: [], resolutionWarning: 'Run saved, but the linked-issue resolution check failed. Rerun to retry; issue statuses were not changed.' }; }
-    return { ...result, ...resolution, id: record.id, files: files.map(f => ({ name: f.name, headers: f.headers, sheet: f.sheet })), savedExceptions: record.exceptions.length };
+    return { ...result, ...resolution, auditSummary: { who: record.who, templateVersion: record.templateVersion, note: record.note }, id: record.id, files: files.map(f => ({ name: f.name, headers: f.headers, sheet: f.sheet })), savedExceptions: record.exceptions.length };
   }
   async function saveRun(context, payload) {
     const s = await scope(context);
@@ -98,7 +109,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     if (result.results.some(r => typeof r.id !== 'string' || typeof r.key !== 'string' || typeof r.label !== 'string' || !Array.isArray(r.entries) || r.entries.length !== payload.sources.length || !Array.isArray(r.diffs) || !Array.isArray(r.counts))) throw new Error('Invalid worker exception evidence.');
     // Client results are explicitly user-supplied evidence; persist only the compact exception subset.
     const saved = await persist(s, payload, result, payload.sources.map(p => ({ name: list.find(a => a.id === String(p.id))?.name || 'JQL' })));
-    return { id: saved.id, savedExceptions: saved.savedExceptions, readyToClose: saved.readyToClose, ...(saved.resolutionWarning ? { resolutionWarning: saved.resolutionWarning } : {}), reviews: saved.results.filter(r => r.status !== 'matched').slice(0, MAX_SAVED_EXCEPTIONS).map(r => ({ id: r.id, signature: r.signature, review: r.review })) };
+    return { id: saved.id, savedExceptions: saved.savedExceptions, auditSummary: saved.auditSummary, readyToClose: saved.readyToClose, ...(saved.resolutionWarning ? { resolutionWarning: saved.resolutionWarning } : {}), reviews: saved.results.filter(r => r.status !== 'matched').slice(0, MAX_SAVED_EXCEPTIONS).map(r => ({ id: r.id, signature: r.signature, review: r.review })) };
   }
   async function reviewException(context, payload) {
     const record = await savedRun(context, payload.runId);
@@ -113,7 +124,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     row.review = review;
     if (new TextEncoder().encode(JSON.stringify(record)).byteLength > 180000) throw new Error('Saved-run notes exceed the storage budget. Split the source and rerun.');
     await store.set(record.reviewNamespace, next);
-    await store.set(`run:${record.id}`, record);
+    await appendAudit(record, { event: 'review', who: context.accountId, exceptionId: row.id, status: review.status, note: review.note });
     return review;
   }
   async function createIssues(context, payload) {
@@ -129,6 +140,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
       if (selected.some(r => !r)) throw new Error('Selected exception is not in this run.');
       if (payload.confirmed !== true) throw new Error('Explicit confirmation is required for selected exceptions.');
     }
+    await appendAudit(record, { event: 'issue-confirmation', who: context.accountId, confirmed: payload.confirmed === true, project: payload.project, issueType: payload.issueType, grouped: Boolean(payload.grouped), selectedIds: selected.map(r => r.id) });
     const rows = payload.grouped ? [{ key: 'grouped', label: `${payload.selectedIds ? selected.length : record.exceptionCount} exceptions`, status: 'grouped', diffs: stableStringify((payload.selectedIds ? selected : record.exceptions).map(({ review, ...row }) => row)).slice(0, 12000) }] : selected;
     const created = [], reused = [];
     for (const row of rows) {
@@ -148,10 +160,29 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
       await trackIssue(record, tracking);
       created.push(issue.key);
     }
+    await appendAudit(record, { event: 'issue-result', who: context.accountId, created, reused });
     return { created, reused, nextOffset: payload.grouped ? record.exceptions.length : offset + rows.length, savedExceptions: record.exceptions.length, totalExceptions: record.exceptionCount };
   }
+  async function auditRun(context, payload) {
+    const record = await savedRun(context, payload.runId);
+    return { id: record.id, who: record.who, templateVersion: record.templateVersion, note: record.note, events: record.audit || [] };
+  }
+  async function createReport(context, payload) {
+    const record = await savedRun(context, payload.runId);
+    const pageId = payload.pageId || (record.source.kind === 'confluence' ? record.source.id : '');
+    if (!/^\d+$/.test(pageId)) throw new Error('Enter an existing Confluence page ID in the intended report space.');
+    const page = await confluence('page', { id: pageId }), key = `report:${record.id}:${page.spaceId}`, cached = await store.get(key);
+    if (cached) { await confluence('page', { id: cached.id }); return { ...cached, reused: true }; }
+    const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const html = `<h1>Reconciliation report</h1><p>Run: ${escape(record.id)}</p><p>When: ${escape(record.when)}</p><p>Actor accountId: ${escape(record.who)}</p><p>Template: ${escape(record.templateName)} / version ${escape(record.templateVersion)}</p><p>Annotation: ${escape(record.note)}</p><p>Sources: ${escape(record.files.join(' / '))}</p><h2>Counts</h2><table><tbody>${Object.entries(record.summary).map(([status, count]) => `<tr><th>${escape(status)}</th><td>${count}</td></tr>`).join('')}</tbody></table><h2>Compact exception evidence</h2><pre>${escape(JSON.stringify(record.exceptions, null, 2))}</pre><h2>Audit events</h2><pre>${escape(JSON.stringify(record.audit || [], null, 2))}</pre><p>Full source rows are not stored in this report. Retain the XLSX evidence. No issue status was changed.</p>`;
+    const created = await confluence('createPage', { spaceId: page.spaceId, status: 'current', title: `Reconcile report ${record.when.slice(0, 19)} ${record.id.slice(0, 8)}`, body: { representation: 'storage', value: html } });
+    const report = { id: created.id, spaceId: page.spaceId, runId: record.id };
+    await store.set(key, report);
+    await appendAudit(record, { event: 'report-created', who: context.accountId, pageId: created.id, spaceId: page.spaceId });
+    return { ...report, reused: false };
+  }
   return {
-    scope, source, run, saveRun, savedRun, createIssues, reviewException,
+    scope, source, run, saveRun, savedRun, createIssues, reviewException, auditRun, createReport,
     async bootstrap(context) {
       const s = await scope(context);
       return { scope: s, attachments: await attachments(s), templates: await store.get(`templates:${s.namespace}`) || [], history: await store.get(`history:${s.kind}:${s.id}`) || [] };

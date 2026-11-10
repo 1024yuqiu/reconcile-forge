@@ -1,8 +1,8 @@
-# Reconcile v3 for Jira & Confluence
+# Reconcile v4 for Jira & Confluence
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Development **3.14.0** adds amount combinations and default grouped creation in Rovo. Production remains **2.1.0** with the previously published source; this update has only been deployed to development. Forge versions are numbered independently per environment. Both Jira and Confluence are connected to the existing production installation. Forge reports Runs on Atlassian eligibility. Production distribution sharing is enabled; use the existing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository is MIT licensed; publishing source does not submit a Devpost entry or upload a video.
+Development **4.0.0** adds bounded amount combinations, domestic parsing, confirmed mapping suggestions, exception-resolution comments, audit trails and Confluence reports. Production remains **2.1.0** with the previously published source; this update has only been deployed to development. Forge versions are numbered independently per environment. Both Jira and Confluence are connected to the existing production installation. Forge reports Runs on Atlassian eligibility. Production distribution sharing is enabled; use the existing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository is MIT licensed; publishing source does not submit a Devpost entry or upload a video.
 
 ## Features
 
@@ -17,7 +17,7 @@ Development **3.14.0** adds amount combinations and default grouped creation in 
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **66/66** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim.
+All cloud acceptance data was synthetic. The source test suite passes **70/70** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
 
 Production 2.1.0 passed a read-only Jira smoke check on an existing synthetic test issue: the three attachments returned **3 / 1 / 2 / 2 / 0**, the checked source issue fields remained unchanged, and no issue was created. The existing sharing link still displays the app, both products and the expected scopes. Production Confluence macro rendering remains unverified: the existing synthetic page contains only a development macro, and no page was changed during the read-only production check. Its successful development coverage below is separate.
 
@@ -27,7 +27,7 @@ Development 3.9.0 repeated the Jira counts and fixed unstable property-order ser
 
 On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. After explicit confirmation, Rovo created one Jira issue for a single selected exception; a repeated request reused that same issue with zero new issues. On development 3.10.0, Rovo explicitly confirmed grouped=true for two selected exceptions, created one grouped test issue, then reused it with zero new issues on a second explicitly confirmed request.
 
-The demo video uses real headless cloud captures with synthetic inputs. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the v10 demo shows a real Rovo create-then-reuse recording. Unaffected Confluence footage remains identified as development 3.8.0.
+The demo video uses real headless cloud captures with synthetic inputs. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the v11 demo includes the real Rovo grouped create-then-reuse recording and phase 14 feature captures. Unaffected Confluence footage remains identified as development 3.8.0.
 
 ## Run locally
 
@@ -57,9 +57,10 @@ For the existing shared production app, follow [JUDGE-INSTALL.md](JUDGE-INSTALL.
 | Scope | Purpose |
 | --- | --- |
 | `read:jira-work` | Read source issues, attachments, JQL results and existing exception references. |
-| `write:jira-work` | Create explicitly confirmed exception issues/sub-tasks. |
+| `write:jira-work` | Create explicitly confirmed exception issues/sub-tasks and add server-verified resolution comments. |
 | `read:attachment:confluence` | Discover and download selected page attachments. |
-| `read:page:confluence` | Verify page access and template space. |
+| `read:page:confluence` | Verify source/target page access, report space and reused report access. |
+| `write:page:confluence` | Create a new report page in the explicitly selected accessible space; never update an existing page. |
 | `storage:app` | Bounded templates, run summaries, compact exception/review evidence and dedupe references. |
 
 Reconciliation data stays within Atlassian and the user’s browser: the app uses Atlassian product APIs and Forge storage, with no application-initiated external network calls.
@@ -86,6 +87,14 @@ flowchart TD
 ```
 
 Stable property-order serialization binds reviews and dedupe to unchanged rules and actual evidence. The SDK's named `makeResolver` API is preserved. The original two-table engine remains covered by regression tests.
+
+## Run audit and Confluence reports
+
+Each new run records the actor’s accountId, a stable content-based template version and an optional annotation. Review notes, explicit issue confirmations, creation/reuse results and report receipts are recorded as bounded audit events. The UI displays accountId rather than an email address. Audit reads are bound to the authorized source. The last 100 events per run share the 180,000-byte record budget; run actor and template version remain in the run metadata even when old events are evicted.
+
+Generate a report in the source Confluence page’s space, or supply an existing accessible page ID to select the intended space from Jira. The action **creates a new page** with counts, compact exception evidence, template version, annotation and audit trail. A serial retry for the same run and space reuses the report; it never updates the source page or an existing report. No global transaction lock is claimed, so serialize creation. Full source rows stay transient; retain the XLSX for complete evidence.
+
+Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded.
 
 ## Exception resolution
 

@@ -5,7 +5,7 @@ import { createService } from '../src/service.js';
 import { suggestFields, reconcileTables } from '../src/multi.js';
 import { DEFAULT_RULES } from '../src/reconcile.js';
 const fixture = (persistedOrder = false) => {
-  const state = new Map(), created = [], comments = [], files = ['100', '105', '100'].map((Amount, i) => ({ name: `${i}.csv`, headers: ['Order ID', 'Amount'], rows: [{ 'Order ID': '1', Amount }] }));
+  const state = new Map(), created = [], comments = [], pages = [], files = ['100', '105', '100'].map((Amount, i) => ({ name: `${i}.csv`, headers: ['Order ID', 'Amount'], rows: [{ 'Order ID': '1', Amount }] }));
   const context = { accountId: 'reviewer', extension: { issue: { key: 'T-1' } } }; let id = 0;
   const service = createService({ store: { get: async k => state.get(k), set: async (k, v) => state.set(k, persistedOrder ? JSON.parse(JSON.stringify(v, (_, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value)) : structuredClone(v)), delete: async k => state.delete(k) },
     uuid: () => String(++id), now: () => '2026-11-10T00:00:00Z', digest: v => createHash('sha256').update(v).digest('hex').slice(0, 32), loadAttachment: async (_, a) => files[Number(a.id)],
@@ -15,11 +15,11 @@ const fixture = (persistedOrder = false) => {
       if (op === 'findException') return undefined;
       if (op === 'create') { created.push(p); return { key: `T-${created.length + 1}` }; }
       if (op === 'comment') { comments.push(p); return { id: String(comments.length) }; }
-    }, confluence: async () => {} });
+    }, confluence: async (op,p) => { if(op==='page')return {id:p.id,spaceId:'9'};if(op==='createPage'){pages.push(p);return {id:`page-${pages.length}`,spaceId:p.spaceId};}throw new Error('Unexpected Confluence mutation');} });
   const config = { ...suggestFields(files), baseIndex: 0, keyRules: DEFAULT_RULES, aggregate: [false, false, false], acceptedPairs: [] };
   state.set('templates:project:T', [{ name: 'Monthly', config }]);
   const payload = { sources: files.map((f, i) => ({ id: String(i) })), config, templateName: 'Monthly' };
-  return { state, created, comments, files, service, context, payload };
+  return { state, created, comments, pages, files, service, context, payload };
 };
 test('saved N-table template, reviewed exceptions survive rerun and changed evidence does not', async () => {
   const { service, context, payload, files } = fixture();
@@ -146,4 +146,38 @@ test('grouped issue receives a resolution comment only when all selected excepti
   await f.service.createIssues(f.context,{runId:first.id,project:'T',issueType:'10001',selectedIds:['0','1'],confirmed:true,grouped:true});
   f.files[1].rows[0].Amount='100';assert.equal((await f.service.run(f.context,f.payload)).readyToClose.length,0);assert.equal(f.comments.length,0);
   f.files[1].rows[1].Amount='200';assert.equal((await f.service.run(f.context,f.payload)).readyToClose.length,1);assert.equal(f.comments.length,1);
+});
+
+test('run audit records actor, content-version, annotation, review and explicit issue confirmation',async()=>{
+  const f=fixture(true),first=await f.service.run(f.context,{...f.payload,note:'Synthetic annotation'});
+  await f.service.reviewException(f.context,{runId:first.id,id:'0',status:'Explained',note:'Synthetic review'});
+  await f.service.createIssues(f.context,{runId:first.id,project:'T',issueType:'10001',selectedIds:['0'],confirmed:true,grouped:true});
+  const audit=await f.service.auditRun(f.context,{runId:first.id});
+  assert.equal(audit.who,'reviewer');assert.equal(audit.note,'Synthetic annotation');assert.ok(audit.templateVersion);
+  assert.deepEqual(audit.events.map(e=>e.event),['run','review','issue-confirmation','issue-result']);
+  assert.equal(audit.events[2].confirmed,true);assert.equal(audit.events[2].grouped,true);
+  const next=await f.service.run(f.context,await reload(f));assert.equal(next.auditSummary.templateVersion,first.auditSummary.templateVersion);
+  const changed=structuredClone(f.payload);changed.config.fields[0].abs='0.02';assert.notEqual((await f.service.run(f.context,changed)).auditSummary.templateVersion,first.auditSummary.templateVersion);
+  await assert.rejects(f.service.run(f.context,{...f.payload,note:'x'.repeat(501)}),/annotation/);
+});
+test('Confluence report creates one new page with escaped evidence and serial retries reuse without editing',async()=>{
+  const f=fixture(),run=await f.service.run(f.context,{...f.payload,note:'<script>synthetic</script>'});
+  const request={runId:run.id,pageId:'42'};
+  assert.equal((await f.service.createReport(f.context,request)).reused,false);
+  assert.equal((await f.service.createReport(f.context,request)).reused,true);
+  assert.equal(f.pages.length,1);assert.equal(f.pages[0].spaceId,'9');
+  assert.match(f.pages[0].body.value,/&lt;script&gt;/);assert.ok(!f.pages[0].body.value.includes('<script>'));
+  assert.ok(f.pages[0].body.value.includes(run.id));assert.match(f.pages[0].body.value,/Actor accountId: reviewer/);
+  assert.equal((await f.service.auditRun(f.context,request)).events.at(-1).event,'report-created');
+});
+test('audit/report reads are source-authorized and report target must be an existing page ID',async()=>{
+  const f=fixture(),run=await f.service.run(f.context,f.payload),other={...f.context,extension:{issue:{key:'T-2'}}};
+  await assert.rejects(f.service.auditRun(other,{runId:run.id}),/not found/);
+  await assert.rejects(f.service.createReport(other,{runId:run.id,pageId:'42'}),/not found/);
+  await assert.rejects(f.service.createReport(f.context,{runId:run.id,pageId:'not-a-page'}),/page ID/);assert.equal(f.pages.length,0);
+});
+test('per-run audit retains at most 100 events while preserving actor and template version',async()=>{
+  const f=fixture(),run=await f.service.run(f.context,f.payload);
+  for(let i=0;i<51;i++)await f.service.createIssues(f.context,{runId:run.id,project:'T',issueType:'10001',selectedIds:['0'],confirmed:true,grouped:true});
+  const audit=await f.service.auditRun(f.context,{runId:run.id});assert.equal(audit.events.length,100);assert.equal(audit.who,'reviewer');assert.equal(audit.templateVersion,run.auditSummary.templateVersion);assert.equal(f.created.length,1);
 });

@@ -27,6 +27,7 @@ const service = createService({ store, uuid: () => crypto.randomUUID(), now: () 
   return rawBytes ? { name: f.name, bytes64: btoa(String.fromCharCode(...new Uint8Array(f.bytes))) } : readBytes(f.bytes, f.name, sheet);
 } });
 export const view = { getContext: async () => context, theme: { enable: async () => {} } };
+export const router = { open: async () => {} };
 export async function invoke(operation, payload) {
   await new Promise(resolve => setTimeout(resolve, 80));
   if (operation === 'loadSource') {

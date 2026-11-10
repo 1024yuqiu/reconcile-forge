@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { invoke, view } from '@forge/bridge';
+import { invoke, view, router } from '@forge/bridge';
 import { DEFAULT_RULES, STATUSES } from '../../src/reconcile.js';
 import { mappingSuggestions, PASSES } from '../../src/multi.js';
 import './style.css';
@@ -27,8 +27,9 @@ function App() {
   const [hideReviewed, setHideReviewed] = useState(false), [reviewId, setReviewId] = useState(''), [reviewStatus, setReviewStatus] = useState('Explained'), [reviewNote, setReviewNote] = useState('');
   const [originalLayout, setOriginalLayout] = useState(false), [statementView, setStatementView] = useState(false);
   const [mappingAdvice, setMappingAdvice] = useState([]), [mappingConfirmed, setMappingConfirmed] = useState(false);
+  const [runNote, setRunNote] = useState(''), [audit, setAudit] = useState(null), [reportPageId, setReportPageId] = useState(''), [report, setReport] = useState(null);
   async function action(fn) { setBusy(true); setError(''); setNotice(''); try { await fn(); } catch (e) { setError(e.message); } finally { setBusy(false); } }
-  function invalidate() { setResult(null); setSelected([]); setConfirm(false); setReviewId(''); }
+  function invalidate() { setResult(null); setSelected([]); setConfirm(false); setReviewId(''); setAudit(null); setReport(null); }
   function initialConfig(next) { const suggestions = mappingSuggestions(next); setMappingAdvice(suggestions.advice); setMappingConfirmed(false); return { ...suggestions.proposed, baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: false }, aggregate: next.map(() => false), acceptedPairs: [] }; }
   async function load(nextSources) {
     const next = [];
@@ -51,12 +52,12 @@ function App() {
     const output = await workerTask({ operation: 'run', files, config: nextConfig });
     if (sources.every(s => !s.local)) {
       const compact = { ...output, results: output.results.filter(r => r.status !== 'matched').slice(0, 200).map(r => ({ ...r, entries: r.entries.map(e => e ? { components: e.components.map(c => ({ values: c.values })) } : null) })) };
-      const saved = await invoke('saveRun', { sources, config: nextConfig, templateName, result: compact });
+      const saved = await invoke('saveRun', { sources, config: nextConfig, templateName, note: runNote, result: compact });
       const byId = new Map(saved.reviews.map(r => [r.id, r]));
       output.results = output.results.map(r => ({ ...r, ...byId.get(r.id) }));
-      output.id = saved.id; output.savedExceptions = saved.savedExceptions; output.readyToClose = saved.readyToClose; output.resolutionWarning = saved.resolutionWarning; setBoot(await invoke('bootstrap'));
+      output.id = saved.id; output.savedExceptions = saved.savedExceptions; output.auditSummary = saved.auditSummary; output.readyToClose = saved.readyToClose; output.resolutionWarning = saved.resolutionWarning; setBoot(await invoke('bootstrap'));
     }
-    setResult(output); setConfig(nextConfig); setSelected([]); setConfirm(false); setReviewId(''); setFilter('all'); setPage(0); setNotice(`Reconciliation complete. ${output.resolutionWarning || 'Review possible matches before accepting any pair.'}`);
+    setResult(output); setAudit(null); setReport(null); setConfig(nextConfig); setSelected([]); setConfirm(false); setReviewId(''); setFilter('all'); setPage(0); setNotice(`Reconciliation complete. ${output.resolutionWarning || 'Review possible matches before accepting any pair.'}`);
   }
   async function applyTemplate(t) {
     if (t.sources && t.sources.length === sources.length) {
@@ -78,7 +79,7 @@ function App() {
   const filtered = result?.results.filter(r => (filter === 'all' || r.status === filter) && (!hideReviewed || !r.review) && (!statementView || r.pairs.some(p => ['only-a', 'only-b'].includes(p.status))) && JSON.stringify(r).toLowerCase().includes(search.toLowerCase())) || [];
   const savedIds = new Set(result?.results.filter(r => r.signature).map(r => r.id));
   return <main>
-    <header className="topbar"><div className="brand"><img src="./icon.svg" alt=""/><strong>Reconcile</strong><span>for Jira & Confluence</span></div><span className="environment">{isMock ? 'LOCAL PREVIEW · SYNTHETIC DATA' : 'ATLASSIAN FORGE · v3'}</span></header>
+    <header className="topbar"><div className="brand"><img src="./icon.svg" alt=""/><strong>Reconcile</strong><span>for Jira & Confluence</span></div><span className="environment">{isMock ? 'LOCAL PREVIEW · SYNTHETIC DATA' : 'ATLASSIAN FORGE · v4'}</span></header>
     <div className="heading"><div><p className="eyebrow">{boot?.scope.kind === 'confluence' ? 'CONFLUENCE PAGE' : 'JIRA ISSUE'} / {boot?.scope.id || 'Loading'}</p><h1>{sources.length === 2 ? 'Two exports. One clear answer.' : 'Your exports. One clear answer.'}</h1><p>Match records, investigate differences and turn exceptions into action.</p></div><span className="privacy">No external data egress</span></div>
     <nav aria-label="Workspace"><button className={tab === 'workspace' ? 'active' : ''} onClick={() => setTab('workspace')}>Reconciliation</button><button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>Run history <span>{boot?.history.length || 0}</span></button></nav>
     {error && <div className="alert error" role="alert">{error}</div>}{notice && <div className="alert" role="status">{notice}</div>}
@@ -112,11 +113,13 @@ function App() {
         {f.type === 'date' && <div className="rules"><label>Date ± days<input aria-label={`Date ± days ${f.name}`} type="number" min="0" max="365" value={f.days ?? 0} onChange={e => updateField(f.id, { days: e.target.value })}/></label><label>Accepted formats<input aria-label={`Accepted formats ${f.name}`} value={f.formats || ''} placeholder="YYYY-MM-DD,DD/MM/YYYY" onChange={e => updateField(f.id, { formats: e.target.value })}/></label></div>}
         {f.type === 'text' && <div className="rules">{[['trim', 'Trim'], ['caseFold', 'Ignore case'], ['fullWidth', 'Normalize full-width'], ['ignorePunctuation', 'Ignore punctuation']].map(([key, title]) => <label className="check" key={key}><input type="checkbox" checked={Boolean(f[key])} onChange={e => updateField(f.id, { [key]: e.target.checked })}/>{title}</label>)}</div>}
       </div>)}<button disabled={config.fields.length >= 50} onClick={() => changeConfig({ ...config, fields: [...config.fields, { id: crypto.randomUUID(), name: 'New field', type: 'exact', columns: files.map(() => '') }] })}>Add field rule</button></div>
+      <label>Run annotation<textarea maxLength={500} value={runNote} onChange={e => setRunNote(e.target.value)} placeholder="Optional evidence or review context"/></label>
       <div className="run-bar"><p>Duplicates need review unless aggregation is enabled. Numeric fields are summed; conflicting text/date fields stay flagged.</p><button className="primary" disabled={busy || !mappingConfirmed} onClick={() => action(() => run())}>{busy ? 'Working…' : 'Run reconciliation'}</button></div></section>}
     {result && <section className="results"><div className="section-title"><div><p className="eyebrow">RECONCILIATION COMPLETE</p><h2>Every difference, accounted for.</h2><p>{result.inputRows.map((n, t) => `${n.toLocaleString()} rows in ${letter(t)}`).join(' · ')} · Counts below are unique keys</p></div><div><label className="check"><input type="checkbox" checked={originalLayout} onChange={e => setOriginalLayout(e.target.checked)}/>Include original table layouts</label><button disabled={busy} onClick={() => action(async () => download(await workerTask({ operation: 'export', run: result, files, options: { originalLayout } }), 'reconciliation.xlsx'))}>Export XLSX ↓</button></div></div>
       <div className="pass-strip">{PASSES.map((p, i) => <span key={p}>{i + 1}. {p}</span>)}</div>
       <div className="metrics">{STATUSES.map(s => <button key={s} className={`metric ${s} ${filter === s ? 'selected' : ''}`} onClick={() => { setFilter(s); setPage(0); }}><span>{labels[s]}</span><strong>{result.summary[s]}</strong></button>)}</div>
       <p>Reasons: {Object.entries(result.reasonSummary).map(([k, v]) => `${k}: ${v}`).join(' · ')}. Reasons can overlap.</p>
+      {result.id && <div className="card" aria-label="Run audit and report"><h3>Run audit & Confluence report</h3><p>Actor accountId: <code>{result.auditSummary?.who}</code></p><p>Template version: <code>{result.auditSummary?.templateVersion}</code></p><p>Annotation: {result.auditSummary?.note || 'None'}</p><button disabled={busy} onClick={() => action(async () => setAudit(await invoke('auditRun', { runId: result.id })))}>Load audit trail</button>{audit && <pre className="audit-events">{JSON.stringify(audit.events, null, 2)}</pre>}<label>Existing Confluence page ID in the report space<input inputMode="numeric" value={reportPageId} onChange={e => { setReportPageId(e.target.value); setReport(null); }} placeholder={boot?.scope.kind === 'confluence' ? 'Use this source page’s space' : 'Select the intended test space via an existing page'}/></label><button disabled={busy || (boot?.scope.kind !== 'confluence' && !reportPageId)} onClick={() => action(async () => { const page = await invoke('createReport', { runId: result.id, pageId: reportPageId }); setReport(page); setNotice(`${page.reused ? 'Reused' : 'Created'} Confluence report page ${page.id}. Existing pages were not changed.`); })}>Generate Confluence report</button>{report && <p>{report.reused ? 'Reused' : 'Created'} page <b>{report.id}</b> <button onClick={() => router.open(`/wiki/pages/viewpage.action?pageId=${report.id}`)}>Open report</button></p>}</div>}
       {!!result.readyToClose?.length && <div className="card" aria-label="Ready to close"><h3>Ready to close · 可关单</h3><p>Server-verified rerun evidence was added to the original issues. Close them manually after review; statuses were not changed.</p>{result.readyToClose.map(r => <p key={r.issue}><b>{r.issue}</b> · Evidence run <code>{r.evidenceRunId}</code></p>)}</div>}
       {config.combinationMatch && <p>Amount combinations: {result.combinationSearch?.checks || 0} checks · {result.combinationSearch?.ambiguous || 0} ambiguous anchors left for review{result.combinationSearch?.bounded && ' · Search limit reached; remaining rows need review.'}</p>}
       {!!result.statements.length && <details className="card statement"><summary>Reconciliation statement & unreconciled items</summary>{result.statements.map(s => <article key={s.table}><h3>{files[result.baseIndex].name} ↔ {s.name} · {s.field}</h3><p>{s.baseTotal.toFixed(2)} base − {s.baseOnly.toFixed(2)} in base only + {s.otherOnly.toFixed(2)} in other only = {s.adjusted.toFixed(2)} adjusted; other total {s.otherTotal.toFixed(2)}. <b>{s.balances ? 'Balances' : `Does not balance · residual ${s.residual.toFixed(2)}`}</b></p><p>In base, not other: {s.onlyBase.join(', ') || 'None'}</p><p>In other, not base: {s.onlyOther.join(', ') || 'None'}</p></article>)}</details>}

@@ -133,6 +133,7 @@ permissions:
     - write:jira-work
     - read:attachment:confluence
     - read:page:confluence
+    - write:page:confluence
     - storage:app
   content:
     styles:

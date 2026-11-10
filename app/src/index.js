@@ -36,6 +36,7 @@ async function jira(operation, p) {
 async function confluence(operation, p) {
   const client = api.asUser();
   if (operation === 'page') return json(await client.requestConfluence(route`/wiki/api/v2/pages/${p.id}`));
+  if (operation === 'createPage') return json(await client.requestConfluence(route`/wiki/api/v2/pages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }));
   const all = []; let cursor;
   do {
     const path = cursor ? route`/wiki/api/v2/pages/${p.id}/attachments?limit=100&cursor=${cursor}` : route`/wiki/api/v2/pages/${p.id}/attachments?limit=100`;
@@ -64,7 +65,7 @@ async function loadAttachment(s, attachment, sheet, rawBytes = false) {
 }
 const service = createService({ store: kvs, jira, confluence, loadAttachment, uuid: randomUUID, digest: value => createHash('sha256').update(value).digest('hex').slice(0, 32), now: () => new Date().toISOString() });
 const definitions = {};
-for (const operation of ['bootstrap', 'saveTemplate', 'run', 'saveRun', 'reviewException', 'createIssues']) definitions[operation] = async ({ context, payload }) => {
+for (const operation of ['bootstrap', 'saveTemplate', 'run', 'saveRun', 'reviewException', 'createIssues', 'auditRun', 'createReport']) definitions[operation] = async ({ context, payload }) => {
   const result = await service[operation](context, payload);
   if (Buffer.byteLength(JSON.stringify(result)) > 3 * 1024 * 1024) throw new Error('Results exceed the 3 MB bridge safety limit. Split the source files and rerun.');
   return result;
