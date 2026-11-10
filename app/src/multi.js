@@ -70,11 +70,59 @@ export function stableStringify(value) {
   return JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 }
 export function exceptionSignature(row) {
-  return stableStringify([row.key, row.status, row.counts, row.diffs, row.entries.map(e => e ? e.components.map(c => c.values) : null)]);
+  const evidence = [row.key, row.status, row.counts, row.diffs, row.entries.map(e => e ? e.components.map(c => c.values) : null)];
+  if (row.combination) evidence.push(row.combination);
+  return stableStringify(evidence);
 }
 export function applyReviewed(run, reviews = []) {
   const bySignature = new Map(reviews.map(r => [r.signature, r]));
   return { ...run, results: run.results.map(row => ({ ...row, review: bySignature.get(exceptionSignature(row)) || null })) };
+}
+
+export const COMBINATION_LIMITS = { candidates: 12, components: 4, checks: 20000 };
+function combineAmounts(tables, fields, config) {
+  const numeric = fields.filter(f => f.type === 'number'), keys = new Set();
+  const state = { keys, checks: 0, bounded: false, ambiguous: 0 };
+  if (!config.combinationMatch) return state;
+  if (!numeric.length) throw new Error('Amount combinations need at least one numeric field.');
+  const values = rows => Object.fromEntries(numeric.map(f => [f.id, rows.reduce((n, r) => n + r.values[f.id], 0)]));
+  const within = (a, b) => numeric.every(f => Number.isSafeInteger(a[f.id]) && Number.isSafeInteger(b[f.id]) && Math.abs(b[f.id] - a[f.id]) <= Math.max(f.cents, Math.abs(a[f.id]) * f.percent / 100) + 1e-7);
+  for (let t = 0; t < tables.length; t++) if (t !== config.baseIndex) for (const [side, other] of [[config.baseIndex, t], [t, config.baseIndex]]) {
+    for (const [key, anchor] of [...tables[side]]) {
+      if (!tables[side].has(key) || keys.has(key) || (anchor.length > 1 && !config.aggregate[side])) continue;
+      const counterpart = tables[other].get(key) || [], target = values(anchor);
+      if (counterpart.length && within(target, values(counterpart))) continue;
+      const candidates = [];
+      for (const [candidateKey, rows] of tables[other]) {
+        if (++state.checks > COMBINATION_LIMITS.checks) { state.bounded = true; return state; }
+        if (candidateKey === key || tables[side].has(candidateKey) || keys.has(candidateKey) || (rows.length > 1 && !config.aggregate[other])) continue;
+        if (fields.filter(f => f.type !== 'number').some(f => rows.some(r => r.values[f.id] !== anchor[0].values[f.id]))) continue;
+        candidates.push({ key: candidateKey, rows });
+        if (candidates.length > COMBINATION_LIMITS.candidates) break;
+      }
+      if (candidates.length > COMBINATION_LIMITS.candidates) { state.bounded = true; continue; }
+      const matches = [];
+      function search(index, picked, rows) {
+        if (++state.checks > COMBINATION_LIMITS.checks) { state.bounded = true; return; }
+        if (picked.length + (counterpart.length ? 1 : 0) >= 2 && within(target, values(rows))) matches.push(picked);
+        if (matches.length > 1 || picked.length + (counterpart.length ? 1 : 0) >= COMBINATION_LIMITS.components) return;
+        for (let i = index; i < candidates.length && matches.length < 2 && state.checks <= COMBINATION_LIMITS.checks; i++) search(i + 1, [...picked, candidates[i].key], [...rows, ...candidates[i].rows]);
+      }
+      search(0, [], counterpart);
+      if (state.checks > COMBINATION_LIMITS.checks) return state;
+      if (matches.length > 1) { state.ambiguous++; continue; }
+      if (matches.length !== 1) continue;
+      const members = [key, ...matches[0]];
+      for (const table of tables) {
+        const rows = members.flatMap(k => table.get(k) || []);
+        members.forEach(k => table.delete(k));
+        if (rows.length) table.set(key, rows);
+      }
+      members.forEach(k => keys.delete(k));
+      keys.add(key);
+    }
+  }
+  return state;
 }
 
 export function reconcileTables(files, input) {
@@ -98,13 +146,15 @@ export function reconcileTables(files, input) {
   for (const p of config.acceptedPairs) {
     if (p.table === base || !tables[base].has(p.to) || tables[p.table]?.get(p.to)?.filter(e => e.accepted).length !== 1 || tables[p.table].get(p.to).length !== 1) throw new Error('Possible match conflicts with an existing key. Reload and review the pair.');
   }
+  const combinations = combineAmounts(tables, fields, config);
   const results = [], keys = new Set(tables.flatMap(g => [...g.keys()]));
   for (const key of keys) {
+    const combined = combinations.keys.has(key);
     const groups = tables.map(g => g.get(key) || []);
     const entries = groups.map((rows, t) => {
       if (!rows.length) return null;
       const values = { ...rows[0].values }, conflicts = [];
-      if (config.aggregate[t] && rows.length > 1) for (const f of fields) {
+      if ((config.aggregate[t] || combined) && rows.length > 1) for (const f of fields) {
         if (f.type === 'number') { values[f.id] = rows.reduce((s, r) => s + r.values[f.id], 0); if (!Number.isSafeInteger(values[f.id])) throw new Error('Aggregated amount exceeds safe integer cents.'); }
         else if (rows.some(r => r.values[f.id] !== values[f.id])) conflicts.push(f.name);
       }
@@ -114,7 +164,7 @@ export function reconcileTables(files, input) {
     for (let t = 0; t < files.length; t++) if (t !== base) {
       const a = entries[base], b = entries[t], changes = [];
       let status, tolerant = false;
-      if ([base, t].some(n => groups[n].length > 1 && (!config.aggregate[n] || entries[n].conflicts.length))) status = 'duplicate';
+      if ([base, t].some(n => groups[n].length > 1 && (!(config.aggregate[n] || combined) || entries[n].conflicts.length))) status = 'duplicate';
       else if (!a && !b) status = 'absent';
       else if (!a) status = 'only-b';
       else if (!b) status = 'only-a';
@@ -127,20 +177,21 @@ export function reconcileTables(files, input) {
         }
         status = changes.length ? 'mismatch' : 'matched';
       }
-      const aggregated = [base, t].some(n => config.aggregate[n] && groups[n].length > 1);
-      const pass = entries[t]?.accepted ? 'Possible match (accepted)' : status === 'matched' ? aggregated ? PASSES[2] : tolerant ? PASSES[1] : PASSES[0] : aggregated ? 'Aggregated — review' : 'Unmatched';
+      const aggregated = [base, t].some(n => (config.aggregate[n] || combined) && groups[n].length > 1);
+      const pass = combined ? `Amount combination${status === 'matched' ? '' : ' — review'}` : entries[t]?.accepted ? 'Possible match (accepted)' : status === 'matched' ? aggregated ? PASSES[2] : tolerant ? PASSES[1] : PASSES[0] : aggregated ? 'Aggregated — review' : 'Unmatched';
       pairs.push({ table: t, status, diffs: changes, pass }); diffs.push(...changes);
     }
     const statuses = pairs.map(p => p.status);
     const status = statuses.includes('duplicate') ? 'duplicate' : statuses.includes('mismatch') ? 'mismatch' : statuses.some(s => s === 'only-a' || s === 'only-b') ? entries[base] ? 'only-a' : 'only-b' : 'matched';
     const pass = pairs.map(p => p.pass).filter((p, i, all) => all.indexOf(p) === i).join(' / ');
-    results.push({ id: String(results.length), key, label: (entries[base] || entries.find(Boolean)).label, status, entries, pairs, diffs, pass, counts: groups.map(g => g.length), presence: entries.map(Boolean) });
+    results.push({ id: String(results.length), key, label: (entries[base] || entries.find(Boolean)).label, status, entries, pairs, diffs, pass, counts: groups.map(g => g.length), presence: entries.map(Boolean), ...(combined ? { combination: entries.map(e => e ? e.components.map(c => ({ key: c.key, row: c.row, values: c.values })) : []) } : {}) });
   }
   const summary = Object.fromEntries(['matched', 'mismatch', 'only-a', 'only-b', 'duplicate'].map(s => [s, results.filter(r => r.status === s).length]));
   const reasonSummary = { missing: results.filter(r => r.pairs.some(p => ['only-a', 'only-b'].includes(p.status))).length, amount: results.filter(r => r.diffs.some(d => d.type === 'number')).length, date: results.filter(r => r.diffs.some(d => d.type === 'date')).length, text: results.filter(r => r.diffs.some(d => ['text', 'exact'].includes(d.type))).length, duplicate: summary.duplicate };
   const run = { version: 3, results, summary, reasonSummary, inputRows: files.map(f => f.rows.length), baseIndex: base, config: input, tableNames: files.map(f => f.name) };
   run.statements = reconciliationStatements(run, fields.find(f => f.type === 'number'));
   run.suggestions = suggestNearMisses(run, fields);
+  run.combinationSearch = { checks: Math.min(combinations.checks, COMBINATION_LIMITS.checks), bounded: combinations.bounded, ambiguous: combinations.ambiguous, limits: COMBINATION_LIMITS };
   return run;
 }
 

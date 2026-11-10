@@ -2,13 +2,13 @@
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Development **3.10.0** adds default grouped creation in Rovo. Production remains **2.1.0** with the previously published source; this update has only been deployed to development. Forge versions are numbered independently per environment. Both Jira and Confluence are connected to the existing production installation. Forge reports Runs on Atlassian eligibility. Production distribution sharing is enabled; use the existing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository is MIT licensed; publishing source does not submit a Devpost entry or upload a video.
+Development **3.11.0** adds amount combinations and default grouped creation in Rovo. Production remains **2.1.0** with the previously published source; this update has only been deployed to development. Forge versions are numbered independently per environment. Both Jira and Confluence are connected to the existing production installation. Forge reports Runs on Atlassian eligibility. Production distribution sharing is enabled; use the existing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository is MIT licensed; publishing source does not submit a Devpost entry or upload a video.
 
 ## Features
 
 - Two to five tables, any reference table, composite keys, worksheet selection and CSV header detection across title/preamble rows, including Chinese headers.
 - Independent numeric tolerances, accepted date formats and text normalization per comparison field. Rule passes are shown with the results.
-- Optional split-payment aggregation that preserves component rows and exposes conflicting nonnumeric values as exceptions.
+- Optional split-payment aggregation plus bounded amount combinations for one payment against several invoices or one invoice against several payments. Component keys, row numbers and integer-cent values remain visible in the UI and XLSX evidence.
 - Matched, mismatched, incomplete-reference, missing-reference and duplicate categories, search/filter/pagination, and explicit acceptance of possible near matches.
 - Evidence-based Explained/Ignored reviews and notes. Unchanged evidence survives saved-template reload; changed evidence invalidates prior reviews.
 - Reconciliation statements and XLSX export, including detailed results and optional coloured worksheets preserving original data-column and row order.
@@ -17,7 +17,7 @@ Development **3.10.0** adds default grouped creation in Rovo. Production remains
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **47/47** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim.
+All cloud acceptance data was synthetic. The source test suite passes **53/53** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim.
 
 Production 2.1.0 passed a read-only Jira smoke check on an existing synthetic test issue: the three attachments returned **3 / 1 / 2 / 2 / 0**, the checked source issue fields remained unchanged, and no issue was created. The existing sharing link still displays the app, both products and the expected scopes. Production Confluence macro rendering remains unverified: the existing synthetic page contains only a development macro, and no page was changed during the read-only production check. Its successful development coverage below is separate.
 
@@ -86,6 +86,12 @@ flowchart TD
 ```
 
 Stable property-order serialization binds reviews and dedupe to unchanged rules and actual evidence. The SDK's named `makeResolver` API is preserved. The original two-table engine remains covered by regression tests.
+
+## Amount combinations
+
+Enable **Match unique amount combinations** only for related exports. The same numeric absolute/percentage tolerance rules apply after summing integer cents. The engine searches both directions, merges a unique subset per anchor, and retains every source row. Ambiguous subsets stay unresolved. Search is capped at 12 candidate groups, 4 component groups and 20,000 checks per run; reaching a bound is visible in the results. Additional mapped text/date fields constrain compatible components. This is a bounded per-anchor search, not a global allocation optimizer; review competing payments and invoices.
+
+The live synthetic [5.01 example](examples/combinations) starts at 305.01 versus 300.00. Switching to the split invoice export and enabling combinations matches 300.00 + 5.01 to 305.01. Reversing the reference table also passes; the downloaded workbook retains all four component rows and the 501-cent evidence.
 
 ## Known limitations
 

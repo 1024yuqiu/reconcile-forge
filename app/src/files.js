@@ -91,10 +91,10 @@ export async function exportMultiWorkbook(run, files, options = {}) {
   for (const s of run.statements) summary.addRows([[`Statement: ${s.name}`, s.balances ? 'Balances' : 'Does not balance'], ['Base total', s.baseTotal], ['Less: in base, not other', s.baseOnly], ['Plus: in other, not base', s.otherOnly], ['Adjusted base', s.adjusted], ['Other total', s.otherTotal], ['Unresolved residual', s.residual]]);
   const fields = run.config.fields.filter(f => f.type !== 'ignore');
   const details = book.addWorksheet('Results');
-  const headers = ['Status', 'Key', 'Pass', 'Present in', 'Differences', 'Review status', 'Review note', ...files.flatMap((f, t) => fields.map(field => `${t + 1}: ${field.name}`))];
+  const headers = ['Status', 'Key', 'Pass', 'Present in', 'Differences', 'Review status', 'Review note', ...files.flatMap((f, t) => fields.map(field => `${t + 1}: ${field.name}`)), 'Amount combination evidence'];
   details.addRow(headers);
   for (const r of run.results) {
-    const row = details.addRow([r.status, r.label, r.pass, r.presence.map((v, t) => v ? t + 1 : null).filter(Boolean).join(', '), JSON.stringify(r.diffs), r.review?.status || '', r.review?.note || '', ...files.flatMap((f, t) => fields.map(field => r.entries[t] ? field.type === 'number' ? r.entries[t].values[field.id] / 100 : r.entries[t].raw[field.columns[t]] : null))]);
+    const row = details.addRow([r.status, r.label, r.pass, r.presence.map((v, t) => v ? t + 1 : null).filter(Boolean).join(', '), JSON.stringify(r.diffs), r.review?.status || '', r.review?.note || '', ...files.flatMap((f, t) => fields.map(field => r.entries[t] ? field.type === 'number' ? r.entries[t].values[field.id] / 100 : r.entries[t].raw[field.columns[t]] : null)), r.combination ? JSON.stringify(r.combination) : '']);
     for (const d of r.diffs) for (const t of [base, d.table]) highlight(row.getCell(8 + t * fields.length + fields.findIndex(f => f.id === d.fieldId)));
   }
   for (let t = 0; t < files.length; t++) if (t !== base) {
