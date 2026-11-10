@@ -5,7 +5,7 @@ import { createService } from '../src/service.js';
 import { suggestFields, reconcileTables } from '../src/multi.js';
 import { DEFAULT_RULES } from '../src/reconcile.js';
 const fixture = (persistedOrder = false) => {
-  const state = new Map(), created = [], files = ['100', '105', '100'].map((Amount, i) => ({ name: `${i}.csv`, headers: ['Order ID', 'Amount'], rows: [{ 'Order ID': '1', Amount }] }));
+  const state = new Map(), created = [], comments = [], files = ['100', '105', '100'].map((Amount, i) => ({ name: `${i}.csv`, headers: ['Order ID', 'Amount'], rows: [{ 'Order ID': '1', Amount }] }));
   const context = { accountId: 'reviewer', extension: { issue: { key: 'T-1' } } }; let id = 0;
   const service = createService({ store: { get: async k => state.get(k), set: async (k, v) => state.set(k, persistedOrder ? JSON.parse(JSON.stringify(v, (_, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value)) : structuredClone(v)), delete: async k => state.delete(k) },
     uuid: () => String(++id), now: () => '2026-11-10T00:00:00Z', digest: v => createHash('sha256').update(v).digest('hex').slice(0, 32), loadAttachment: async (_, a) => files[Number(a.id)],
@@ -14,11 +14,12 @@ const fixture = (persistedOrder = false) => {
       if (op === 'attachments') return files.map((f, i) => ({ name: f.name, id: String(i) }));
       if (op === 'findException') return undefined;
       if (op === 'create') { created.push(p); return { key: `T-${created.length + 1}` }; }
+      if (op === 'comment') { comments.push(p); return { id: String(comments.length) }; }
     }, confluence: async () => {} });
   const config = { ...suggestFields(files), baseIndex: 0, keyRules: DEFAULT_RULES, aggregate: [false, false, false], acceptedPairs: [] };
   state.set('templates:project:T', [{ name: 'Monthly', config }]);
   const payload = { sources: files.map((f, i) => ({ id: String(i) })), config, templateName: 'Monthly' };
-  return { state, created, files, service, context, payload };
+  return { state, created, comments, files, service, context, payload };
 };
 test('saved N-table template, reviewed exceptions survive rerun and changed evidence does not', async () => {
   const { service, context, payload, files } = fixture();
@@ -111,4 +112,38 @@ for (const change of ['amount', 'row', 'rule']) test(`template reload rejects ol
   assert.equal(next.results[0].review, null);
   assert.deepEqual((await f.service.createIssues(f.context, { ...request, runId: next.id })).created, ['T-3']);
   assert.equal(f.created.length, 2);
+});
+
+test('resolved exceptions add one evidence comment, repeated balanced runs reuse the receipt without transitions', async () => {
+  const f=fixture(), first=await f.service.run(f.context,f.payload);
+  await f.service.createIssues(f.context,{runId:first.id,project:'T',issueType:'10001',selectedIds:['0'],confirmed:true,grouped:true});
+  f.files[1].rows[0].Amount='100';
+  const balanced=await f.service.run(f.context,f.payload);
+  assert.equal(f.comments.length,1);assert.match(f.comments[0].text,new RegExp(balanced.id));assert.match(f.comments[0].text,/no status was changed/);
+  assert.deepEqual(balanced.readyToClose,[{issue:'T-2',evidenceRunId:balanced.id}]);
+  await f.service.run(f.context,f.payload);assert.equal(f.comments.length,1);
+  f.files[1].rows[0].Amount='106';assert.equal((await f.service.run(f.context,f.payload)).readyToClose.length,0);
+  f.files[1].rows[0].Amount='100';await f.service.run(f.context,f.payload);assert.equal(f.comments.length,2);
+});
+test('compact Worker claims cannot mark an unresolved source as balanced', async () => {
+  const f=fixture(), first=await f.service.run(f.context,f.payload);
+  await f.service.createIssues(f.context,{runId:first.id,project:'T',issueType:'10001',selectedIds:['0'],confirmed:true,grouped:true});
+  f.files[1].rows[0].Amount='100';const result=reconcileTables(f.files,f.payload.config);f.files[1].rows[0].Amount='105';
+  const saved=await f.service.saveRun(f.context,{...f.payload,result:{...result,results:[]}});
+  assert.equal(saved.readyToClose.length,0);assert.equal(f.comments.length,0);
+});
+test('a missing previous key and changed rules do not constitute resolution evidence', async () => {
+  const f=fixture(), first=await f.service.run(f.context,f.payload);
+  await f.service.createIssues(f.context,{runId:first.id,project:'T',issueType:'10001',selectedIds:['0'],confirmed:true,grouped:true});
+  f.files[1].rows[0].Amount='100';const changed=structuredClone(f.payload);changed.config.fields[0].abs='0.02';
+  assert.equal((await f.service.run(f.context,changed)).readyToClose.length,0);
+  f.files.forEach(file=>file.rows[0]['Order ID']='different-key');
+  assert.equal((await f.service.run(f.context,f.payload)).readyToClose.length,0);assert.equal(f.comments.length,0);
+});
+test('grouped issue receives a resolution comment only when all selected exception keys balance', async () => {
+  const f=fixture();f.files.forEach((file,i)=>file.rows.push({'Order ID':'2',Amount:i===1?'207':'200'}));
+  const first=await f.service.run(f.context,f.payload);
+  await f.service.createIssues(f.context,{runId:first.id,project:'T',issueType:'10001',selectedIds:['0','1'],confirmed:true,grouped:true});
+  f.files[1].rows[0].Amount='100';assert.equal((await f.service.run(f.context,f.payload)).readyToClose.length,0);assert.equal(f.comments.length,0);
+  f.files[1].rows[1].Amount='200';assert.equal((await f.service.run(f.context,f.payload)).readyToClose.length,1);assert.equal(f.comments.length,1);
 });

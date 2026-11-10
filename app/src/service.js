@@ -31,14 +31,43 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     if (!run || run.source.kind !== s.kind || run.source.id !== s.id) throw new Error('Run not found on this issue or page.');
     return run;
   }
+  const linksKey = record => `links:${record.source.kind}:${record.source.id}:${digest(record.templateName)}`;
+  const configIdentity = record => digest(stableStringify([record.rules, record.mappings]));
+  async function trackIssue(record, reference) {
+    const key = linksKey(record), refs = await store.get(key) || [];
+    if (refs.some(r => r.issue === reference.issue)) return;
+    const next = [...refs, reference].slice(-100);
+    while (new TextEncoder().encode(JSON.stringify(next)).byteLength > 170000) next.shift();
+    await store.set(key, next);
+  }
+  async function reconcileLinked(s, record, verified) {
+    const refs = await store.get(linksKey(record)) || [], identity = configIdentity(record);
+    if (!record.config || !refs.some(r => r.configIdentity === identity)) return { readyToClose: [] };
+    // A compact Worker summary cannot establish that a particular key now matches.
+    // Re-read authorized attachments and recompute on Forge before posting any comment.
+    const current = verified || reconcileTables(await Promise.all(record.sources.map(input => source(s, input))), record.config);
+    const matched = new Set(current.results.filter(r => r.status === 'matched').map(r => r.key)), readyToClose = [];
+    for (const ref of refs.filter(r => r.configIdentity === identity)) {
+      if (!ref.keys.every(key => matched.has(key))) { delete ref.resolvedRunId; continue; }
+      if (!ref.resolvedRunId) {
+        await jira('comment', { key: ref.issue, text: `Reconcile: previously reported exceptions now balance. Ready for manual closure; no status was changed.\nVerified run: ${record.id}\nWhen: ${record.when}\nSources: ${record.files.join(' / ')}\nMatched keys: ${ref.keys.join(', ')}\nSummary: ${JSON.stringify(current.summary)}` });
+        ref.resolvedRunId = record.id;
+        // Persist each receipt so a later comment failure cannot replay successful ones.
+        await store.set(linksKey(record), refs);
+      }
+      readyToClose.push({ issue: ref.issue, evidenceRunId: ref.resolvedRunId });
+    }
+    await store.set(linksKey(record), refs);
+    return { readyToClose };
+  }
   async function run(context, payload) {
     const s = await scope(context);
     if (!Array.isArray(payload.sources) || payload.sources.length < 2 || payload.sources.length > 5) throw new Error('Select 2–5 sources.');
     const files = await Promise.all(payload.sources.map(input => source(s, input)));
     const result = payload.config ? reconcileTables(files, payload.config) : reconcile(files[0], files[1], payload.mappings, payload.rules);
-    return persist(s, payload, result, files);
+    return persist(s, payload, result, files, true);
   }
-  async function persist(s, payload, result, files) {
+  async function persist(s, payload, result, files, serverVerified = false) {
     const templateName = payload.templateName || '';
     if (templateName.length > 80) throw new Error('Template name must be at most 80 characters.');
     const reviewNamespace = `reviews:${s.namespace}:${digest(templateName)}`;
@@ -53,7 +82,10 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     const history = await store.get(historyKey) || [];
     await store.set(historyKey, [{ id: record.id, when: record.when, who: record.who, files: record.files, summary: record.summary }, ...history].slice(0, 20));
     for (const old of history.slice(19)) await store.delete(`run:${old.id}`);
-    return { ...result, id: record.id, files: files.map(f => ({ name: f.name, headers: f.headers, sheet: f.sheet })), savedExceptions: record.exceptions.length };
+    let resolution;
+    try { resolution = await reconcileLinked(s, record, serverVerified ? result : null); }
+    catch { resolution = { readyToClose: [], resolutionWarning: 'Run saved, but the linked-issue resolution check failed. Rerun to retry; issue statuses were not changed.' }; }
+    return { ...result, ...resolution, id: record.id, files: files.map(f => ({ name: f.name, headers: f.headers, sheet: f.sheet })), savedExceptions: record.exceptions.length };
   }
   async function saveRun(context, payload) {
     const s = await scope(context);
@@ -66,7 +98,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     if (result.results.some(r => typeof r.id !== 'string' || typeof r.key !== 'string' || typeof r.label !== 'string' || !Array.isArray(r.entries) || r.entries.length !== payload.sources.length || !Array.isArray(r.diffs) || !Array.isArray(r.counts))) throw new Error('Invalid worker exception evidence.');
     // Client results are explicitly user-supplied evidence; persist only the compact exception subset.
     const saved = await persist(s, payload, result, payload.sources.map(p => ({ name: list.find(a => a.id === String(p.id))?.name || 'JQL' })));
-    return { id: saved.id, savedExceptions: saved.savedExceptions, reviews: saved.results.filter(r => r.status !== 'matched').slice(0, MAX_SAVED_EXCEPTIONS).map(r => ({ id: r.id, signature: r.signature, review: r.review })) };
+    return { id: saved.id, savedExceptions: saved.savedExceptions, readyToClose: saved.readyToClose, ...(saved.resolutionWarning ? { resolutionWarning: saved.resolutionWarning } : {}), reviews: saved.results.filter(r => r.status !== 'matched').slice(0, MAX_SAVED_EXCEPTIONS).map(r => ({ id: r.id, signature: r.signature, review: r.review })) };
   }
   async function reviewException(context, payload) {
     const record = await savedRun(context, payload.runId);
@@ -105,13 +137,15 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
       const hash = digest(stableStringify([record.source.kind, record.source.id, payload.project, payload.issueType, payload.parent || '', record.rules, record.mappings, evidence]));
       const label = `reconcile-${hash}`;
       const cached = await store.get(`dedupe:${hash}`);
-      if (cached) { await jira('issue', { key: cached.issue }); reused.push(cached.issue); continue; }
+      if (cached) { await jira('issue', { key: cached.issue }); if (cached.tracking) await trackIssue(record, cached.tracking); reused.push(cached.issue); continue; }
       const existing = await jira('findException', { label, project: payload.project });
       if (existing) { reused.push(existing); continue; }
       const fields = { project: { key: payload.project }, issuetype: { id: payload.issueType }, summary: `Reconcile: ${row.status} — ${row.label}`.slice(0, 250), labels: ['reconcile', label], description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: `Run ${record.id}\nSources: ${record.files.join(' / ')}\nKey: ${row.label}\nStatus: ${row.status}\nDifferences: ${row.diffs || 'Review missing or duplicate source rows.'}` }] }] } };
       if (payload.parent) { if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(payload.parent)) throw new Error('Invalid parent issue key.'); fields.parent = { key: payload.parent }; }
       const issue = await jira('create', { fields });
-      await store.set(`dedupe:${hash}`, { issue: issue.key, runId: record.id });
+      const tracking = { issue: issue.key, keys: (payload.grouped ? selected : [row]).map(r => r.key), configIdentity: configIdentity(record), when: now() };
+      await store.set(`dedupe:${hash}`, { issue: issue.key, runId: record.id, tracking });
+      await trackIssue(record, tracking);
       created.push(issue.key);
     }
     return { created, reused, nextOffset: payload.grouped ? record.exceptions.length : offset + rows.length, savedExceptions: record.exceptions.length, totalExceptions: record.exceptionCount };

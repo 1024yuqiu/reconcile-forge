@@ -30,6 +30,7 @@ async function jira(operation, p) {
     return data.issues[0]?.key;
   }
   if (operation === 'create') return json(await client.requestJira(route`/rest/api/3/issue`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }));
+  if (operation === 'comment') return json(await client.requestJira(route`/rest/api/3/issue/${p.key}/comment`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: p.text }] }] } }) }));
   throw new Error('Unknown Jira operation.');
 }
 async function confluence(operation, p) {

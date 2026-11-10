@@ -54,9 +54,9 @@ function App() {
       const saved = await invoke('saveRun', { sources, config: nextConfig, templateName, result: compact });
       const byId = new Map(saved.reviews.map(r => [r.id, r]));
       output.results = output.results.map(r => ({ ...r, ...byId.get(r.id) }));
-      output.id = saved.id; output.savedExceptions = saved.savedExceptions; setBoot(await invoke('bootstrap'));
+      output.id = saved.id; output.savedExceptions = saved.savedExceptions; output.readyToClose = saved.readyToClose; output.resolutionWarning = saved.resolutionWarning; setBoot(await invoke('bootstrap'));
     }
-    setResult(output); setConfig(nextConfig); setSelected([]); setConfirm(false); setReviewId(''); setFilter('all'); setPage(0); setNotice('Reconciliation complete. Review possible matches before accepting any pair.');
+    setResult(output); setConfig(nextConfig); setSelected([]); setConfirm(false); setReviewId(''); setFilter('all'); setPage(0); setNotice(`Reconciliation complete. ${output.resolutionWarning || 'Review possible matches before accepting any pair.'}`);
   }
   async function applyTemplate(t) {
     if (t.sources && t.sources.length === sources.length) {
@@ -117,6 +117,7 @@ function App() {
       <div className="pass-strip">{PASSES.map((p, i) => <span key={p}>{i + 1}. {p}</span>)}</div>
       <div className="metrics">{STATUSES.map(s => <button key={s} className={`metric ${s} ${filter === s ? 'selected' : ''}`} onClick={() => { setFilter(s); setPage(0); }}><span>{labels[s]}</span><strong>{result.summary[s]}</strong></button>)}</div>
       <p>Reasons: {Object.entries(result.reasonSummary).map(([k, v]) => `${k}: ${v}`).join(' · ')}. Reasons can overlap.</p>
+      {!!result.readyToClose?.length && <div className="card" aria-label="Ready to close"><h3>Ready to close · 可关单</h3><p>Server-verified rerun evidence was added to the original issues. Close them manually after review; statuses were not changed.</p>{result.readyToClose.map(r => <p key={r.issue}><b>{r.issue}</b> · Evidence run <code>{r.evidenceRunId}</code></p>)}</div>}
       {config.combinationMatch && <p>Amount combinations: {result.combinationSearch?.checks || 0} checks · {result.combinationSearch?.ambiguous || 0} ambiguous anchors left for review{result.combinationSearch?.bounded && ' · Search limit reached; remaining rows need review.'}</p>}
       {!!result.statements.length && <details className="card statement"><summary>Reconciliation statement & unreconciled items</summary>{result.statements.map(s => <article key={s.table}><h3>{files[result.baseIndex].name} ↔ {s.name} · {s.field}</h3><p>{s.baseTotal.toFixed(2)} base − {s.baseOnly.toFixed(2)} in base only + {s.otherOnly.toFixed(2)} in other only = {s.adjusted.toFixed(2)} adjusted; other total {s.otherTotal.toFixed(2)}. <b>{s.balances ? 'Balances' : `Does not balance · residual ${s.residual.toFixed(2)}`}</b></p><p>In base, not other: {s.onlyBase.join(', ') || 'None'}</p><p>In other, not base: {s.onlyOther.join(', ') || 'None'}</p></article>)}</details>}
       <div className="card"><div className="filters"><label>Show<select aria-label="Result category" value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}><option value="all">All categories</option>{STATUSES.map(s => <option key={s} value={s}>{labels[s]}</option>)}</select></label><label>Search<input type="search" placeholder="Search key or value…" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}/></label><span>{filtered.length} results</span></div>

@@ -11,7 +11,7 @@ mock.module(require.resolve('@forge/api'), { defaultExport: { asUser: () => ({ r
 mock.module(require.resolve('@forge/kvs'), { namedExports: { kvs: { get: async k => state.get(k), set: async (k, v) => state.set(k, v) } } });
 mock.module(require.resolve('@forge/resolver'), { namedExports: { makeResolver: d => d } });
 const { rovoCreate } = await import('../src/index.js');
-const record = { id: 'group-test', source: { kind: 'jira', id: 'TEST-1' }, config: {}, files: ['synthetic.csv'], rules: {}, mappings: {}, exceptionCount: 2, exceptions: [{ id: '0', label: 'A', key: 'A', status: 'mismatch', diffs: '5.01' }, { id: '1', label: 'B', key: 'B', status: 'only-a', diffs: '' }] };
+const record = { id: 'group-test', templateName: '', source: { kind: 'jira', id: 'TEST-1' }, config: {}, files: ['synthetic.csv'], rules: {}, mappings: {}, exceptionCount: 2, exceptions: [{ id: '0', label: 'A', key: 'A', status: 'mismatch', diffs: '5.01' }, { id: '1', label: 'B', key: 'B', status: 'only-a', diffs: '' }] };
 state.set('run:group-test', record);
 const payload = { context: { jira: { issueKey: 'TEST-1' } }, runId: record.id, project: 'TEST', issueType: '10001', exceptionIds: '0,1', confirmed: 'true' };
 test('Rovo defaults to shared grouped creation and serial retry reuses exactly one issue', async () => {
