@@ -85,12 +85,26 @@ Stable property-order serialization binds reviews and dedupe to unchanged rules 
 ## Limits
 
 - CSV/XLSX only; UTF-8 and GBK/GB18030 CSV. Encrypted XLSX and legacy XLS are unsupported. Formulas use cached values, without recalculation. Header inference examines the first 20 rows; fix ambiguous source headers when necessary.
-- Up to 50,000 rows per table and 100 XLSX columns; attached compressed files are capped at 2 MiB each, local uploads at 8 MiB. Engine test capacity does not guarantee every large workbook fits Forge memory/time. Split large exports.
-- Bridge payload safety limit: 3 MiB. JQL is capped at 5,000 issues (key/summary/status); Confluence discovery at 1,000 attachments.
+- Up to 50,000 rows per table and 100 XLSX columns; attached compressed files are capped at 2 MiB each, local uploads at 8 MiB. The live development Jira Worker path processed **three 50,000-row CSV tables** (150,000 input rows) in 13.884 seconds including loading, template saving and run persistence. This is the tested maximum for these narrow synthetic CSVs, not a guarantee for every workbook. A 50,001-row sheet is rejected with “Use 1–50,000 data rows per sheet; split larger exports.”
+- Bridge payload safety limit: 3 MiB. The server resolver returning full rows passed three 1,000-row tables in 3.683 seconds; 5k/10k/20k per table hit the explicit 3 MiB result guard in 3.911/5.266/8.307 seconds. The normal Jira UI uses a browser Worker and only saves compact evidence, so those same sizes and 50k passed there. No Forge timeout or out-of-memory boundary was reached; those physical platform limits are not claimed as measured. JQL is capped at 5,000 issues (key/summary/status); Confluence discovery at 1,000 attachments.
 - Last 20 run summaries per source, up to 200 compact exceptions per run, 180,000-byte run records, and 20 templates per project/space. Full comparison rows are transient. Grouped descriptions may truncate; retain XLSX for full evidence.
 - At most 20 selected exceptions per creation request. Valid target type IDs, project permissions and required fields are necessary. Ordinary serial retries reuse references. Concurrent requests or a crash between Jira creation and KVS recording can still duplicate issues; serialize creation.
 - Original-layout export preserves selected data columns/rows, rather than the source workbook's complete formatting, title preambles or unselected sheets. No FX conversion or unattended schedule is included.
 - Existing pre-fix signatures are not migrated. Offline mocks do not establish real tenant permissions, quotas, consent or distribution eligibility. Concurrent creation is not claimed to be atomic.
+
+
+## Live CSV capacity measurements
+
+All values are development measurements on three identical, narrow synthetic tables, not a performance SLA. UI times include attachment loading, template saving, reconciliation and compact persistence.
+
+| Rows per table | Jira Worker path | End-to-end seconds | Full-result server resolver |
+| ---: | --- | ---: | --- |
+| 1,000 | Passed | 13.209 | Passed |
+| 5,000 | Passed | 10.124 | 3 MiB guard |
+| 10,000 | Passed | 11.032 | 3 MiB guard |
+| 20,000 | Passed | 12.096 | 3 MiB guard |
+| 50,000 | Passed | 13.884 | Not measured |
+| 50,001 | Friendly row-limit rejection | 45.061 | Not measured |
 
 ## License and dependencies
 
