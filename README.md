@@ -27,7 +27,7 @@ Development 3.9.0 repeated the Jira counts and fixed unstable property-order ser
 
 On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. After explicit confirmation, Rovo created one Jira issue for a single selected exception; a repeated request reused that same issue with zero new issues. On development 3.10.0, Rovo explicitly confirmed grouped=true for two selected exceptions, created one grouped test issue, then reused it with zero new issues on a second explicitly confirmed request.
 
-The demo video uses real headless cloud captures with synthetic inputs. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the v11 demo includes the real Rovo grouped create-then-reuse recording and phase 14 feature captures. Unaffected Confluence footage remains identified as development 3.8.0.
+The demo video uses real headless cloud captures with synthetic inputs. The locally prepared English v11 demo is 172.8 seconds, 1920×1080 at 30 fps; its audio/video decode, freeze, silence and clipping checks passed. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the v11 demo includes the real Rovo grouped create-then-reuse recording and phase 14 feature captures. Unaffected Confluence footage remains identified as development 3.8.0.
 
 ## Run locally
 
