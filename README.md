@@ -2,7 +2,7 @@
 
 Compare attached AP ledgers, bank exports, inventory lists or operational records by key, then turn exceptions into Jira work. The application is a new Forge project; its pure comparison engine is ported from the owner's read-only browser tool. No marketing text or UI from that tool is reused.
 
-Production 2.0.0 is deployed and installed for Jira and Confluence; Forge reports Runs on Atlassian eligibility. Development 3.2.0 remains installed. A real Jira Cloud server-side comparison passed with the synthetic sample data below. Live browser panel rendering, first-run user consent, Rovo conversation, real exception creation and full Confluence reconciliation remain unverified. See [JUDGE-INSTALL.md](JUDGE-INSTALL.md) for the judge workflow. Distribution sharing and public video upload are pending; nothing has been submitted or published.
+Production 2.0.0 is deployed and installed for Jira and Confluence; Forge reports Runs on Atlassian eligibility. Development 3.2.0 remains installed. A real Jira Cloud comparison and browser panel passed with the synthetic sample data below. A confirmed grouped request created SCRUM-6 for 39 exceptions, and an identical serial rerun reused it without creating another issue. First-run user consent, a Rovo conversation and full Confluence reconciliation remain unverified. See [JUDGE-INSTALL.md](JUDGE-INSTALL.md) for the judge workflow. Distribution sharing and public video upload are pending; nothing has been submitted or published.
 
 ## Run locally
 
@@ -78,7 +78,7 @@ Date disagreements beyond tolerance are **value mismatches**. The old engine tre
 - Issue creation needs valid project-specific issue type IDs and any configured required fields. The app sends summary, description and labels, plus optional parent; projects requiring additional fields will reject creation with a clear API error. Subsequent requests can retry completed rows safely through stored references.
 - Deduplication uses stable source/rules/key/content/target labels and Forge KVS references across reruns. It prevents ordinary serial retries, including search-index lag after a recorded creation. Concurrent calls or a crash between Jira creation and KVS recording can still duplicate issues. Serialize creation in the demo; transactional/concurrency hardening remains future work.
 - No scheduled trigger is included; manual runs avoid unattended costs. Rovo uses compact evidence and cannot invent mismatch causes. Create actions require conversational user confirmation under the agent prompt and the `CREATE` action verb; there is no autonomous scheduled creation.
-- Offline mocks cannot validate actual product contexts, downloads/redirects, tenant permissions, Jira required fields, Rovo confirmation behavior, KVS quotas or distribution eligibility. These require separate live checks; the recorded server-side test does not prove the browser or agent flows.
+- Offline mocks cannot validate actual product contexts, downloads/redirects, tenant permissions, Jira required fields, Rovo confirmation behavior, KVS quotas or distribution eligibility. These require separate live checks; the live Jira browser test verifies grouped creation and serial reuse for this sample, but not the agent flow.
 
 ## Dependencies and provenance
 
