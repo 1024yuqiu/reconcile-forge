@@ -12,7 +12,8 @@
     "check:manifest": "node scripts/manifest-check.js",
     "samples": "node scripts/samples.js",
     "licenses": "node scripts/licenses.js",
-    "lint:forge": "forge lint"
+    "lint:forge": "forge lint",
+    "test:adapter": "node --experimental-test-module-mocks --test tests/confluence-download.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1165.0",

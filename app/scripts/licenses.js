@@ -1,5 +1,6 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+await mkdir('../logs', { recursive: true });
 const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
 // TASK-2.md policy: explicit permissive families, never an unrestricted wildcard.
 const allowed = new Set(['MIT', 'MIT/X11', 'ISC', 'BSD-2-Clause', 'BSD-3-Clause', 'Apache-2.0', '0BSD', 'BlueOak-1.0.0', 'Python-2.0', 'Unlicense', 'WTFPL']);

@@ -8,7 +8,7 @@ export function matrixToFile(matrix, name, sheet = 'CSV', sheets = ['CSV'], head
     let best = -1;
     matrix.slice(0, 20).forEach((row, i) => {
       const values = row.map(v => String(v ?? '').trim()).filter(Boolean);
-      const named = values.filter(v => /order|reference|invoice|amount|date|total|订单|金额|日期|编号/i.test(v)).length;
+      const named = values.filter(v => /order|reference|invoice|amount|^amt$|date|total|订单|单号|金额|日期|编号|客户/i.test(v)).length;
       const score = values.length >= 2 && new Set(values).size === values.length ? named * 10 + values.filter(v => isNaN(Number(v))).length : -1;
       if (score > best) { best = score; headerIndex = i; }
     });
@@ -64,6 +64,7 @@ export async function readBytes(bytes, name, sheetName, headerRow) {
 }
 
 export async function exportWorkbook(run, files, rules) {
+  if (run.version === 3) return exportMultiWorkbook(run, files, rules);
   const { default: ExcelJS } = await import('exceljs');
   const book = new ExcelJS.Workbook();
   const summary = book.addWorksheet('Summary');
@@ -77,5 +78,47 @@ export async function exportWorkbook(run, files, rules) {
   duplicates.addRow(['Key', 'Side', 'Source row', 'Raw data']);
   for (const r of run.results.filter(r => r.status === 'duplicate')) for (const side of ['a', 'b']) for (const row of r.duplicateRows[side]) duplicates.addRow([r.label, side.toUpperCase(), row.row, JSON.stringify(row.raw)]);
   for (const sheet of book.worksheets) { sheet.getRow(1).font = { bold: true }; sheet.views = [{ state: 'frozen', ySplit: 1 }]; }
+  return book.xlsx.writeBuffer();
+}
+
+export async function exportMultiWorkbook(run, files, options = {}) {
+  const { default: ExcelJS } = await import('exceljs');
+  const book = new ExcelJS.Workbook(), base = run.baseIndex;
+  const highlight = cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE7A0' } }; };
+  const summary = book.addWorksheet('Summary');
+  summary.addRows([['Reconcile v3', 'All results, independent of screen filters'], ['Base table', files[base].name], ['Rules', JSON.stringify(run.config)], ...Object.entries(run.summary), ...Object.entries(run.reasonSummary).map(([k, v]) => [`Reason: ${k}`, v]), ['Rule passes', 'Exact key → Key + tolerance → Aggregated → Possible match (explicit acceptance only)']]);
+  files.forEach((f, t) => summary.addRow([`Table ${t + 1}`, `${f.name} / ${f.sheet || 'CSV'} / header row ${f.headerRow || 1} / ${run.inputRows[t]} rows`]));
+  for (const s of run.statements) summary.addRows([[`Statement: ${s.name}`, s.balances ? 'Balances' : 'Does not balance'], ['Base total', s.baseTotal], ['Less: in base, not other', s.baseOnly], ['Plus: in other, not base', s.otherOnly], ['Adjusted base', s.adjusted], ['Other total', s.otherTotal], ['Unresolved residual', s.residual]]);
+  const fields = run.config.fields.filter(f => f.type !== 'ignore');
+  const details = book.addWorksheet('Results');
+  const headers = ['Status', 'Key', 'Pass', 'Present in', 'Differences', 'Review status', 'Review note', ...files.flatMap((f, t) => fields.map(field => `${t + 1}: ${field.name}`))];
+  details.addRow(headers);
+  for (const r of run.results) {
+    const row = details.addRow([r.status, r.label, r.pass, r.presence.map((v, t) => v ? t + 1 : null).filter(Boolean).join(', '), JSON.stringify(r.diffs), r.review?.status || '', r.review?.note || '', ...files.flatMap((f, t) => fields.map(field => r.entries[t] ? field.type === 'number' ? r.entries[t].values[field.id] / 100 : r.entries[t].raw[field.columns[t]] : null))]);
+    for (const d of r.diffs) for (const t of [base, d.table]) highlight(row.getCell(8 + t * fields.length + fields.findIndex(f => f.id === d.fieldId)));
+  }
+  for (let t = 0; t < files.length; t++) if (t !== base) {
+    const sheet = book.addWorksheet(`Pair ${base + 1}-${t + 1}`);
+    sheet.addRow(['Key', 'Status', 'Pass', 'Base rows', 'Other rows', 'Differences', 'Review status', 'Review note']);
+    for (const r of run.results) { const p = r.pairs.find(p => p.table === t); if (p.status !== 'absent') { const row = sheet.addRow([r.label, p.status, p.pass, r.counts[base], r.counts[t], JSON.stringify(p.diffs), r.review?.status || '', r.review?.note || '']); if (p.diffs.length) highlight(row.getCell(6)); } }
+  }
+  const duplicates = book.addWorksheet('Duplicate groups'); duplicates.addRow(['Key', 'Table', 'Source row', 'Aggregated', 'Raw data']);
+  const components = book.addWorksheet('Component rows'); components.addRow(['Key', 'Table', 'Source row', 'Raw data']);
+  for (const r of run.results) r.entries.forEach((e, t) => { if (e && e.components.length > 1) for (const c of e.components) { components.addRow([r.label, files[t].name, c.row, JSON.stringify(c.raw)]); duplicates.addRow([r.label, files[t].name, c.row, Boolean(run.config.aggregate[t]), JSON.stringify(c.raw)]); } });
+  const reviewed = book.addWorksheet('Reviewed exceptions'); reviewed.addRow(['Key', 'Status', 'Note', 'Reviewed by', 'When']);
+  run.results.filter(r => r.review).forEach(r => reviewed.addRow([r.label, r.review.status, r.review.note, r.review.who, r.review.when]));
+  if (options.originalLayout) files.forEach((file, t) => {
+    const sheet = book.addWorksheet(`Original ${t + 1}`);
+    sheet.addRow([...file.headers, 'Reconcile status', 'Matched key', 'Rule pass', 'Review note']);
+    const byRow = new Map();
+    for (const r of run.results) for (const c of r.entries[t]?.components || []) byRow.set(c.row, r);
+    file.rows.forEach((raw, i) => {
+      const sourceRow = file.rowNumbers?.[i] ?? i + (file.headerRow || 1) + 1, r = byRow.get(sourceRow);
+      const row = sheet.addRow([...file.headers.map(h => raw[h]), r?.status || '', r?.label || '', r?.pass || '', r?.review?.note || '']);
+      for (const d of r?.diffs || []) { const column = t === base ? d.baseColumn : t === d.table ? d.column : null; if (column) highlight(row.getCell(file.headers.indexOf(column) + 1)); }
+    });
+  });
+  for (const sheet of book.worksheets) { sheet.getRow(1).font = { bold: true }; sheet.views = [{ state: 'frozen', ySplit: 1 }]; sheet.columns.forEach(c => { c.width = 24; }); }
+  summary.getColumn(2).width = 100;
   return book.xlsx.writeBuffer();
 }

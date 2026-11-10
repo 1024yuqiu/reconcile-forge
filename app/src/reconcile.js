@@ -8,12 +8,14 @@ export function normalize(value, rules = DEFAULT_RULES) {
   if (rules.fullWidth) text = text.replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 65248)).replace(/\u3000/g, ' ');
   if (rules.trim) text = text.trim();
   if (rules.caseFold) text = text.toLowerCase();
+  if (rules.ignorePunctuation) text = text.replace(/[\p{P}\p{S}]/gu, '');
+  if (rules.leadingZeros) text = text.replace(/^0+(?=\d)/, '');
   return text;
 }
 
 export function guessMapping(headers) {
   const find = pattern => headers.find(h => pattern.test(h)) || '';
-  return { keys: [find(/order.?id|reference|invoice|订单|交易.*号|单据号/i) || headers[0]], amount: find(/amount|total|金额|实收|实付/i), date: find(/date|日期|时间/i), compare: [] };
+  return { keys: [find(/order.?id|reference|invoice|订单|交易.*号|单据号|^单号$|编号|^id$/i) || headers[0]], amount: find(/amount|^amt$|total|金额|实收|实付/i), date: find(/date|日期|时间/i), compare: [] };
 }
 
 export function amountInCents(value) {

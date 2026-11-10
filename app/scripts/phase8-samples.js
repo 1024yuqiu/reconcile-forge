@@ -1,0 +1,25 @@
+import ExcelJS from 'exceljs';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
+import { readBytes } from '../src/files.js';
+import { suggestFields, reconcileTables } from '../src/multi.js';
+import { DEFAULT_RULES } from '../src/reconcile.js';
+await mkdir('samples', { recursive: true });
+await mkdir('static/ui/mock-data/v3', { recursive: true });
+const ledger = 'Synthetic ledger\n\nOrder ID,Amount,Date,Customer\n0001,100.00,2026-10-01,Acme\n0002,200.00,2026-10-02,Beta\n0003,300.00,2026-10-03,Gamma\n0004,400.00,2026-10-04,Delta\n0005,500.00,2026-10-05,Echo\n0006,600.00,2026-10-06,Foxtrot\n';
+const invoices = '合成发票数据\n\n单号,金额,日期,客户\n1,40.00,2026-10-01,Acme\n1,60.00,2026-10-01,Acme\n2,200.00,2026-10-02,Beta\n3,300.00,2026-10-03,Gamma\n4,400.00,2026-10-04,Delta\n5,500.00,2026-10-05,Echo\n8,800.00,2026-10-08,Hotel\n';
+const book = new ExcelJS.Workbook();
+book.addWorksheet('Read me').addRows([['Synthetic workbook'], ['Select Transactions', 'All data is fictional'], ['Order ID', 'Amount', 'Date', 'Customer'], ['0', 0, '2026-01-01', 'Instructions only']]);
+book.addWorksheet('Transactions').addRows([['Synthetic bank statement'], [], ['Reference', 'Amt', 'Payment Date', 'Client'], ['1', 100, '2026-10-01', 'Acme'], ['2', 200.01, '2026-10-03', 'Beta'], ['3', 305, '2026-10-03', 'Gamma'], ['5', 500, '2026-10-05', 'Echo'], ['6', 600, '2026-10-06', 'Foxtrot'], ['7', 700, '2026-10-07', 'Golf']]);
+await writeFile('samples/ledger.csv', '\uFEFF' + ledger, 'utf8');
+await writeFile('samples/invoices.csv', '\uFEFF' + invoices, 'utf8');
+await book.xlsx.writeFile('samples/bank.xlsx');
+const files = await Promise.all(['ledger.csv', 'bank.xlsx', 'invoices.csv'].map(async name => {
+  const bytes = await readFile(`samples/${name}`); await writeFile(`static/ui/mock-data/v3/${name}`, bytes);
+  return readBytes(bytes, name, name === 'bank.xlsx' ? 'Transactions' : undefined);
+}));
+const config = { ...suggestFields(files), baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: true }, aggregate: [false, false, true], acceptedPairs: [] };
+const run = reconcileTables(files, config);
+await writeFile('samples/config.json', JSON.stringify(config, null, 2));
+await writeFile('samples/expected.json', JSON.stringify({ summary: run.summary, inputRows: run.inputRows, reasonSummary: run.reasonSummary, statements: run.statements, rows: run.results.map(r => ({ key: r.label, status: r.status, pass: r.pass, presence: r.presence })) }, null, 2));
+await writeFile('samples/README.md', `# Synthetic v3 acceptance set\n\nSelect ledger.csv as A/base, bank.xlsx as B (Transactions sheet), invoices.csv as C. Enable Ignore leading zeros in keys and Aggregate C. Save the template if testing reviewed carry-over. Every header is on source row 3. The bank has two sheets; its first is deliberately a readable instruction sheet, so select Transactions explicitly.\n\nExpected rows: 6 ledger, 6 bank, 7 invoices. Unique key union: 8. Counts: 3 matched (1,2,5), 1 mismatch (3), 2 only in base / incomplete across comparisons (4,6), 2 missing from base (7,8), 0 duplicates. Key 1 aggregates 40+60=100. Key 2 bank amount delta 0.01 and date delta 1 are within tolerance. Key 3 bank amount delta 5 fails. Key 4 is absent from bank; key 5 is absent from neither (matched); key 6 is absent from invoices. See expected.json for exact counts, presence flags, passes and statement totals.\n\nNo suggestion is accepted in the expected counts. Statement and pair sheets show missing keys per comparison, even when the overall category is mismatch or missing elsewhere. Use config.json for the exact template settings.\n`);
+console.log(JSON.stringify({ summary: run.summary, inputRows: run.inputRows, reasonSummary: run.reasonSummary, rows: run.results.map(r => [r.label, r.status, r.pass]) }, null, 2));

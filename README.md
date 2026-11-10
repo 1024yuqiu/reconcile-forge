@@ -1,100 +1,95 @@
-# Reconcile for Jira & Confluence
+# Reconcile v3 for Jira & Confluence
 
-Compare attached AP ledgers, bank exports, inventory lists or operational records by key, then turn exceptions into Jira work. The application is a new Forge project; its pure comparison engine is ported from the owner's read-only browser tool. No marketing text or UI from that tool is reused.
+Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Production 2.0.0 is deployed and installed for Jira and Confluence; Forge reports Runs on Atlassian eligibility. Development 3.2.0 remains installed. A real Jira Cloud comparison and browser panel passed with the synthetic sample data below. A confirmed grouped request created SCRUM-6 for 39 exceptions, and an identical serial rerun reused it without creating another issue. First-run user consent, a Rovo conversation and full Confluence reconciliation remain unverified. See [JUDGE-INSTALL.md](JUDGE-INSTALL.md) for the judge workflow. Distribution sharing and public video upload are pending; nothing has been submitted or published.
+Production **2.1.0** contains the same application source as development **3.9.0**; Forge versions are numbered independently per environment. Both Jira and Confluence are connected to the existing production installation. Forge reports Runs on Atlassian eligibility. Production distribution sharing is enabled; use the existing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository is MIT licensed; publishing source does not submit a Devpost entry or upload a video.
+
+## Features
+
+- Two to five tables, any reference table, composite keys, worksheet selection and CSV header detection across title/preamble rows, including Chinese headers.
+- Independent numeric tolerances, accepted date formats and text normalization per comparison field. Rule passes are shown with the results.
+- Optional split-payment aggregation that preserves component rows and exposes conflicting nonnumeric values as exceptions.
+- Matched, mismatched, incomplete-reference, missing-reference and duplicate categories, search/filter/pagination, and explicit acceptance of possible near matches.
+- Evidence-based Explained/Ignored reviews and notes. Unchanged evidence survives saved-template reload; changed evidence invalidates prior reviews.
+- Reconciliation statements and XLSX export, including detailed results and optional coloured worksheets preserving original data-column and row order.
+- Project/space templates, recent run history and checkbox-selected Jira issue creation, either individual or grouped, behind a separate confirmation step.
+- Rovo actions for saved-template runs, explanations of stored exceptions and confirmation-gated issue creation. **Live Rovo creation remains unverified.**
+
+## What has actually been verified
+
+All cloud acceptance data was synthetic. The source test suite passes **44/44** tests, plus **2/2** Confluence attachment-adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim.
+
+Production 2.1.0 passed a read-only Jira smoke check on an existing synthetic test issue: the three attachments returned **3 / 1 / 2 / 2 / 0**, the checked source issue fields remained unchanged, and no issue was created. The existing sharing link still displays the app, both products and the expected scopes. Production Confluence macro rendering remains unverified: the existing synthetic page contains only a development macro, and no page was changed during the read-only production check. Its successful development coverage below is separate.
+
+On development 3.8.0, real Jira and Confluence UI runs compared three attached files containing **6 / 6 / 7** data rows. Both returned **3 matched / 1 mismatch / 2 only in reference / 2 missing from reference / 0 duplicates**. Actual downloaded workbooks were checked for ten worksheets, eight result keys and the differing amount cell's colour.
+
+Development 3.9.0 repeated the Jira counts and fixed unstable property-order serialization in evidence identities. One explicit grouped confirmation created one test issue for selected keys 3 and 4. After a full page refresh, saved-template reload and identical rerun, the next confirmation reused that issue with no new issue. Both Explained and Ignored reviews and their notes returned; hiding reviewed exceptions reduced eight displayed rows to six. Changed amounts, row counts and rules invalidate old reviews and prevent issue reuse in local service tests. Old-version records were not migrated or claimed as migrated.
+
+On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. Rovo asked for confirmation before creation; no creation confirmation was sent. **Rovo issue creation, its grouped write behaviour and a fully passing run/explain/create sequence remain unverified. The Best Agents bonus is not claimed.**
+
+The v9 demo uses real headless cloud captures with synthetic inputs. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the Rovo creation overview is labelled unverified. Unaffected Confluence footage remains identified as development 3.8.0. Neither videos nor a Devpost submission are published by this source update.
 
 ## Run locally
 
-Use a supported Node LTS release. The locked Forge CLI requires Node `^22.23.4 || ^24.22.1 || >=26.12.1`; Node 24.21.0 can run the preview but is below the CLI's declared minimum.
+Use Node **24.22.1** (the locked Forge CLI requires `^22.23.4 || ^24.22.1 || >=26.12.1`).
 
 ```powershell
 cd app
 npm ci
 npm test
+npm run test:adapter
 npm run build
 npm run preview
 ```
 
-Open `http://127.0.0.1:4173`. The preview explicitly says **LOCAL PREVIEW · SYNTHETIC DATA**, replaces `@forge/bridge` at build resolution, and uses the same service and engine as the Forge app. It simulates attachment selection, templates, run history and issue creation. Template and history metadata are kept in browser localStorage. Preview-created issue identifiers are synthetic. The production build uses real `@forge/bridge`; it never falls back silently to mocks.
+Open `http://127.0.0.1:4178/?v3`. The preview explicitly says **LOCAL PREVIEW · SYNTHETIC DATA**. Only mock mode replaces the Forge bridge, using the shared service/engine and local browser storage; production builds use the real bridge. Local mock issue IDs are synthetic. No Atlassian account is needed for preview.
 
-Choose the two synthetic attachments, inspect mapping and tolerances, then click **Run reconciliation**. Optional local uploads in preview accept XLSX and UTF-8/GBK CSV. Both sides must be local files when using uploads. Uploaded local runs are not persisted. `npm run samples` regenerates the original four fixtures under `samples/`. `node scripts/phase4-samples.js` regenerates the live-test-compatible `phase3-ledger.csv` and `phase3-bank.xlsx`, verifies parsed cells and counts, and copies them into the mock-only asset directory. Visit `http://127.0.0.1:4173/?phase4` to load these files through the real parser and shared service. Expected key counts: 270 matched, 18 mismatch, 10 only A, 10 only B, one duplicate group.
+Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Select B's **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The files and exact settings are in [app/samples](app/samples). The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
 
-## Features
+With preview running, `npm run test:ui` runs a headless Edge check at desktop/mobile widths, including real Worker parsing, worksheet/template reload, reviews, export and local uploads. It requires an installed Microsoft Edge browser. Outputs go to ignored `app/logs/`. `npm run check:manifest` validates the local manifest; authenticated Forge lint is `npm run lint:forge`. `npm run licenses` regenerates notices and enforces the existing license allowlist. The optional historical comparison requires your separately supplied engine through `RECONCILE_REFERENCE_FILE`; that private reference is not included.
 
-- Jira issue panel and Confluence macro, with attachment discovery and workbook worksheet selection.
-- File A against file B or JQL as B. JQL produces `Issue key`, `Summary`, `Status`; map matching export columns explicitly and turn off amount/date comparison when those fields are absent.
-- Header and key suggestions, multi-column composite keys, paired amount/date mappings and optional additional text comparisons.
-- Inclusive absolute / percentage amount tolerances, date tolerance in calendar days, trim/case/full-width normalization.
-- Matched, value mismatch, only A, only B and duplicate-key categories; search, filter, pagination and highlighted amount/field changes.
-- XLSX export includes complete results, selected rules and all duplicate source rows. It is independent of the active filters. Cell strings are written as values, never interpreted as spreadsheet formulas.
-- Saved project/space templates and last 20 run summaries per source issue/page, attributed to the invoking account.
-- Exception issues or sub-tasks in a chosen project/type, one per exception or grouped. Creation has a separate review/confirmation step and a maximum of 20 per request.
-- Rovo Reconciliation Assistant with actual run, explain and create handlers. The current Forge module is `action`, not `rovo:action`.
+## Install your own deployment
 
-## Install on Atlassian
+For the existing shared production app, follow [JUDGE-INSTALL.md](JUDGE-INSTALL.md). Jira is required; Confluence is an optional connection on the same site. The public Forge app ID in the manifest identifies the registered app and is not a credential. To deploy a separate app, register your own Forge app identity, build the UI, lint, deploy and install it with the Forge CLI. Installation needs a site administrator; reading files and creating issues still depend on the invoking user's permissions. Fresh judge-site installation and a new user's first consent flow are not claimed as verified.
 
-Use the production sharing link once the owner has enabled it: see JUDGE-INSTALL.md (currently TBD). Jira is required; connect optional Confluence on the same site to test the macro. The manifest contains the registered public Forge app ID, not a credential. Source users deploying a separate app must register their own app identity with Forge. Build the UI, run Forge lint, deploy, then install Jira and connect Confluence if needed. Marketplace publication is not planned.
+## Permissions and storage
 
-## Scopes
-
-| Scope | Reason |
+| Scope | Purpose |
 | --- | --- |
-| `read:jira-work` | Read source issue/project and attachment metadata/content, JQL result rows, and existing exception issues for deduplication. |
-| `write:jira-work` | Create user-confirmed exception issues or sub-tasks. |
-| `read:attachment:confluence` | List and download page attachments. |
-| `read:page:confluence` | Verify access to the current page and derive its space for templates. |
-| `storage:app` | Persist run summaries, compact exception evidence, templates and dedupe references in Forge KVS. |
+| `read:jira-work` | Read source issues, attachments, JQL results and existing exception references. |
+| `write:jira-work` | Create explicitly confirmed exception issues/sub-tasks. |
+| `read:attachment:confluence` | Discover and download selected page attachments. |
+| `read:page:confluence` | Verify page access and template space. |
+| `storage:app` | Bounded templates, run summaries, compact exception/review evidence and dedupe references. |
 
-All product requests use `api.asUser()`: app scopes never override the current user's product permissions. Backend resolvers derive the source from Forge context, re-fetch the source's attachments and reject arbitrary attachment IDs. Stored runs are readable only from their original source after a fresh user permission check. Templates are shared by project/space; run history is shared with users who can access its source. Only administrators should grant access to sensitive source pages/issues.
-
-There is no `permissions.external`, remote backend, analytics service or external AI endpoint. The bundle uses Atlassian design-token CSS variables with neutral/green fallback styling. Inline styles are permitted for the host's theme integration. The browser receives transient comparison results for display/export. No source workbook is persisted to KVS; compact exception evidence is stored there. Preview data stays in its local browser.
+Product requests use `api.asUser()`. The server derives the issue/page from Forge context, rechecks access and attachment membership, and rejects arbitrary source attachment IDs. Templates are shared by project/space; stored runs are only readable from their authorized source. Full workbooks are not stored in Forge KVS. The manifest has no external egress permission or remote backend; the app calls no external model endpoint. Exports are downloaded by the user. See [PRIVACY.md](PRIVACY.md) and [SUPPORT.md](SUPPORT.md).
 
 ## Architecture
 
 ```text
-Jira issue panel / Confluence macro (React Custom UI)
-  -> @forge/bridge invoke -> src/index.js (Forge Resolver, asUser product APIs)
-  -> src/service.js (source authorization, templates, runs, issue creation)
-  -> src/files.js (Papa Parse + ExcelJS) -> src/reconcile.js (pure engine)
-  -> @forge/kvs (bounded metadata and exception evidence)
+Jira panel / Confluence macro (React Custom UI)
+  -> Forge bridge -> named makeResolver API (src/index.js)
+  -> source authorization / templates / runs / reviews / issue creation (src/service.js)
+  -> CSV/XLSX parsing (src/files.js), shared multi-table engine (src/multi.js)
+  -> bounded Forge KVS metadata and compact evidence
 
-Rovo agent -> action handlers -> same service / engine
-Local preview -> mock bridge -> same service / engine
-Preview local uploads -> Web Worker comparison -> XLSX export
+Browser Worker -> shared parsing/comparison -> display and XLSX export
+Rovo actions -> same service and comparison engine on Forge
+Local mock preview -> same engine/service with synthetic product adapters
 ```
 
-`src/reconcile.js` retains integer-cents amount parsing and validated calendar-day date handling from the reference. Unique keys are indexed in a Map, giving linear grouping/comparison. Composite keys are serialized arrays, preventing delimiter collisions. Any repeated key on either side becomes one duplicate-key group, never an arbitrary financial match. Key counts therefore differ from source row counts. Amount tolerance is `max(absolute cents, abs(A cents) * percentage / 100)`. Values with more than two decimal places are rejected. No FX conversion is implied.
+Stable property-order serialization binds reviews and dedupe to unchanged rules and actual evidence. The SDK's named `makeResolver` API is preserved. The original two-table engine remains covered by regression tests.
 
-Date disagreements beyond tolerance are **value mismatches**. The old engine treated them as unmatched rows. This is an intentional product change so cell-level date differences are visible. The old engine also paired duplicate records greedily; this app flags all such groups for review. No other reference file was modified.
+## Limits
 
-## Limits and operational boundaries
+- CSV/XLSX only; UTF-8 and GBK/GB18030 CSV. Encrypted XLSX and legacy XLS are unsupported. Formulas use cached values, without recalculation. Header inference examines the first 20 rows; fix ambiguous source headers when necessary.
+- Up to 50,000 rows per table and 100 XLSX columns; attached compressed files are capped at 2 MiB each, local uploads at 8 MiB. Engine test capacity does not guarantee every large workbook fits Forge memory/time. Split large exports.
+- Bridge payload safety limit: 3 MiB. JQL is capped at 5,000 issues (key/summary/status); Confluence discovery at 1,000 attachments.
+- Last 20 run summaries per source, up to 200 compact exceptions per run, 180,000-byte run records, and 20 templates per project/space. Full comparison rows are transient. Grouped descriptions may truncate; retain XLSX for full evidence.
+- At most 20 selected exceptions per creation request. Valid target type IDs, project permissions and required fields are necessary. Ordinary serial retries reuse references. Concurrent requests or a crash between Jira creation and KVS recording can still duplicate issues; serialize creation.
+- Original-layout export preserves selected data columns/rows, rather than the source workbook's complete formatting, title preambles or unselected sheets. No FX conversion or unattended schedule is included.
+- Existing pre-fix signatures are not migrated. Offline mocks do not establish real tenant permissions, quotas, consent or distribution eligibility. Rovo creation remains unverified.
 
-- Pure engine: 1–50,000 rows per table. XLSX: maximum 100 columns and 20 preamble/header rows; first worksheet by default. Header detection examines the first 20 rows and reports the detected source row. If the guessed header is incorrect, clean the export before attaching it. Encrypted XLSX and legacy XLS are unsupported. Formulas use cached values, not recalculation.
-- Attached files: 2 MB compressed bytes each; local preview uploads: 8 MB. XLSX decompression can amplify memory use; very wide or highly compressed files may still exceed Forge runtime memory/time. Split exports when a limit is hit. 50,000 rows are engine-tested, not a promise every 50,000-row workbook fits a resolver.
-- Custom UI bridge results: 3 MB safety limit. Larger results fail explicitly and request splitting; they are never silently truncated. The run summary may already be saved when the bridge size guard fails.
-- JQL: paginated, maximum 5,000 issues, key/summary/status only. Narrow larger queries. Confluence attachment discovery: paginated, maximum 1,000 attachments.
-- Full results are transient. Save at most the first 200 compact exceptions (difference text up to 2,000 characters each) and 20 run summaries per source. Individual run KVS records are guarded below 180,000 UTF-8 bytes. Template limit: 20 per project/space. Grouped issue descriptions are compact and may truncate; attach/export the XLSX for full audit evidence.
-- Issue creation needs valid project-specific issue type IDs and any configured required fields. The app sends summary, description and labels, plus optional parent; projects requiring additional fields will reject creation with a clear API error. Subsequent requests can retry completed rows safely through stored references.
-- Deduplication uses stable source/rules/key/content/target labels and Forge KVS references across reruns. It prevents ordinary serial retries, including search-index lag after a recorded creation. Concurrent calls or a crash between Jira creation and KVS recording can still duplicate issues. Serialize creation in the demo; transactional/concurrency hardening remains future work.
-- No scheduled trigger is included; manual runs avoid unattended costs. Rovo uses compact evidence and cannot invent mismatch causes. Create actions require conversational user confirmation under the agent prompt and the `CREATE` action verb; there is no autonomous scheduled creation.
-- Offline mocks cannot validate actual product contexts, downloads/redirects, tenant permissions, Jira required fields, Rovo confirmation behavior, KVS quotas or distribution eligibility. These require separate live checks; the live Jira browser test verifies grouped creation and serial reuse for this sample, but not the agent flow.
+## License and dependencies
 
-## Dependencies and provenance
-
-ExcelJS (MIT) and Papa Parse (MIT) handle files; SheetJS is not used. `package-lock.json` pins resolved packages. [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) records direct/transitive notices and development tools; regenerate with `npm run licenses`. Reference source: `E:\夏楚铮\作品集\B-工具\src\reconcile.js`, `files.js`, `main.jsx`, read only. No reference tree writes are made.
-
-**License gate passed:** 1,155 locked packages, zero UNKNOWN licenses and zero non-allowlisted exceptions. The ExcelJS unzipper override and explicitly pinned optional bundling dependency are explained in [LICENSING-REVIEW.md](LICENSING-REVIEW.md). See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for required notices. No project LICENSE has been chosen; the owner must decide before source publication.
-
-## Official references
-
-- [Jira issue panel](https://developer.atlassian.com/platform/forge/manifest-reference/modules/jira-issue-panel/)
-- [Confluence macro](https://developer.atlassian.com/platform/forge/manifest-reference/modules/macro/)
-- [Rovo agent](https://developer.atlassian.com/platform/forge/manifest-reference/modules/rovo-agent/) and [action, inputs and context](https://developer.atlassian.com/platform/forge/manifest-reference/modules/rovo-action/)
-- [App compatibility and installation](https://developer.atlassian.com/platform/forge/app-compatibility/)
-- [Forge platform limits](https://developer.atlassian.com/platform/forge/platform-quotas-and-limits/)
-- [Jira attachment API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-attachments/)
-- [Confluence attachment API](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-attachment/)
-- [Forge KVS](https://developer.atlassian.com/platform/forge/storage-reference/)
-
-Codegeist 2026 materials are prepared in English; the selected category is Apps for Business Teams and the proposed bonus is Best Agents (Rovo), pending live conversation verification. Contest rules and distribution documentation were checked November 10, 2026. Source publication is optional; this package has no remote or chosen project license. Do not interpret dependency notices as a license grant for the project itself.
+[MIT](LICENSE), Copyright (c) 2026 Chuzheng Xia. ExcelJS, Papa Parse and React use permissive licenses. [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) preserves direct/transitive notices and tooling licenses; [LICENSING-REVIEW.md](LICENSING-REVIEW.md) explains the unzipper override and optional bundler dependency. The dependency license gate remains unchanged: unknown and non-allowlisted declarations fail. Passing it is not a full security audit.

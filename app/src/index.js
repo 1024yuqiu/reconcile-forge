@@ -45,33 +45,33 @@ async function confluence(operation, p) {
   } while (cursor);
   return all.filter(a => /\.(csv|xlsx)$/i.test(a.title)).map(a => ({ id: a.id, name: a.title, size: a.fileSize, downloadLink: a.downloadLink }));
 }
-async function loadAttachment(s, attachment, sheet) {
+async function loadAttachment(s, attachment, sheet, rawBytes = false) {
   // Bound compressed bytes before parsing; response JSON is bounded separately below.
   if (attachment.size > 2 * 1024 * 1024) throw new Error('Attached file exceeds the 2 MB server safety limit. Split it into smaller files.');
   let response;
   if (s.kind === 'jira') response = await api.asUser().requestJira(route`/rest/api/3/attachment/content/${attachment.id}?redirect=false`);
   else {
     const url = new URL(attachment.downloadLink, 'https://local.invalid');
-    if (!url.pathname.startsWith('/wiki/download/attachments/') && !url.pathname.startsWith('/download/attachments/')) throw new Error('Unsupported Confluence attachment download path.');
     const path = url.pathname.startsWith('/wiki/') ? url.pathname : `/wiki${url.pathname}`;
+    if (!path.startsWith('/wiki/download/attachments/') && path !== `/wiki/rest/api/content/${s.id}/child/attachment/${attachment.id}/download`) throw new Error('Unsupported Confluence attachment download path.');
     response = await api.asUser().requestConfluence(assumeTrustedRoute(path + url.search));
   }
   if (!response.ok) throw new Error(`Attachment download failed (${response.status}).`);
   const bytes = await response.arrayBuffer();
   if (bytes.byteLength > 2 * 1024 * 1024) throw new Error('Attachment exceeds 2 MB. Split the export.');
-  return readBytes(bytes, attachment.name, sheet);
+  return rawBytes ? { name: attachment.name, bytes64: Buffer.from(bytes).toString('base64'), sheet } : readBytes(bytes, attachment.name, sheet);
 }
 const service = createService({ store: kvs, jira, confluence, loadAttachment, uuid: randomUUID, digest: value => createHash('sha256').update(value).digest('hex').slice(0, 32), now: () => new Date().toISOString() });
 const definitions = {};
-for (const operation of ['bootstrap', 'saveTemplate', 'run', 'createIssues']) definitions[operation] = async ({ context, payload }) => {
+for (const operation of ['bootstrap', 'saveTemplate', 'run', 'saveRun', 'reviewException', 'createIssues']) definitions[operation] = async ({ context, payload }) => {
   const result = await service[operation](context, payload);
   if (Buffer.byteLength(JSON.stringify(result)) > 3 * 1024 * 1024) throw new Error('Results exceed the 3 MB bridge safety limit. Split the source files and rerun.');
   return result;
 };
 definitions.loadSource = async ({ context, payload }) => {
-  const result = await service.source(await service.scope(context), payload);
-  // Mapping needs headers and sheet names, not the full source data.
-  return { name: result.name, headers: result.headers, sheets: result.sheets || ['JQL'], sheet: result.sheet || 'JQL', rowCount: result.rows.length, headerRow: result.headerRow };
+  const result = await service.source(await service.scope(context), { ...payload, rawBytes: true });
+  if (Buffer.byteLength(JSON.stringify(result)) > 3 * 1024 * 1024) throw new Error('Source exceeds the 3 MB bridge safety limit. Split the export.');
+  return result;
 };
 export const handler = makeResolver(definitions);
 export async function rovoRun(payload, context) {
@@ -79,7 +79,10 @@ export async function rovoRun(payload, context) {
   const data = await service.bootstrap(ctx);
   const template = data.templates.find(t => t.name === payload.template);
   if (!template) throw new Error('Saved template not found in this project.');
-  const result = await service.run(ctx, { sources: [{ id: payload.attachmentA }, { id: payload.attachmentB }], mappings: template.mappings, rules: template.rules });
+  const ids = payload.attachmentIds ? payload.attachmentIds.split(',').map(id => id.trim()) : [payload.attachmentA, payload.attachmentB];
+  if (ids.length < 2 || ids.length > 5 || ids.some(id => !/^\d+$/.test(id))) throw new Error('Provide 2–5 comma-separated attachment IDs in template table order.');
+  const sources = ids.map((id, i) => ({ id, sheet: template.sources?.[i]?.sheet }));
+  const result = await service.run(ctx, { sources, mappings: template.mappings, rules: template.rules, config: template.config, templateName: template.name });
   return { runId: result.id, summary: result.summary, inputRows: result.inputRows };
 }
 function rovoContext(payload, context) {
@@ -93,4 +96,7 @@ export async function rovoExplain(payload, context) {
   const run = await service.savedRun(rovoContext(payload, context), payload.runId);
   return { runId: run.id, summary: run.summary, examples: run.exceptions.slice(0, 10), note: 'Observed differences only; causes require human investigation.' };
 }
-export const rovoCreate = (payload, context) => service.createIssues(rovoContext(payload, context), payload);
+export const rovoCreate = (payload, context) => {
+  if (String(payload.confirmed).toLowerCase() !== 'true' || !payload.exceptionIds) throw new Error('Explicit confirmation and selected exception IDs are required.');
+  return service.createIssues(rovoContext(payload, context), { ...payload, selectedIds: payload.exceptionIds.split(',').map(v => v.trim()), confirmed: true });
+};
