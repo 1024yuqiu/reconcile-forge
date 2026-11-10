@@ -98,5 +98,6 @@ export async function rovoExplain(payload, context) {
 }
 export const rovoCreate = (payload, context) => {
   if (String(payload.confirmed).toLowerCase() !== 'true' || !payload.exceptionIds) throw new Error('Explicit confirmation and selected exception IDs are required.');
-  return service.createIssues(rovoContext(payload, context), { ...payload, selectedIds: payload.exceptionIds.split(',').map(v => v.trim()), confirmed: true });
+  if (payload.grouped !== undefined && !['true', 'false'].includes(String(payload.grouped).toLowerCase())) throw new Error('Grouped mode must be true or false.');
+  return service.createIssues(rovoContext(payload, context), { ...payload, grouped: String(payload.grouped ?? 'true').toLowerCase() === 'true', selectedIds: payload.exceptionIds.split(',').map(v => v.trim()), confirmed: true });
 };
