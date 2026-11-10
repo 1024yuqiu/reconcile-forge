@@ -62,6 +62,8 @@ For the existing shared production app, follow [JUDGE-INSTALL.md](JUDGE-INSTALL.
 | `read:page:confluence` | Verify page access and template space. |
 | `storage:app` | Bounded templates, run summaries, compact exception/review evidence and dedupe references. |
 
+Reconciliation data stays within Atlassian and the user’s browser: the app uses Atlassian product APIs and Forge storage, with no application-initiated external network calls.
+
 Product requests use `api.asUser()`. The server derives the issue/page from Forge context, rechecks access and attachment membership, and rejects arbitrary source attachment IDs. Templates are shared by project/space; stored runs are only readable from their authorized source. Full workbooks are not stored in Forge KVS. Every declared scope is used by the product API or Forge KVS adapters. Removing Jira read/write and Confluence page-read scopes individually produces Forge lint errors; attachment and KVS scope use is verified by code and adapter coverage because lint does not infer those dynamic paths. The manifest has no external egress permission or remote backend; the app calls no external model endpoint. Exports are downloaded by the user. See [PRIVACY.md](PRIVACY.md) and [SUPPORT.md](SUPPORT.md).
 
 ## Architecture
