@@ -1,0 +1,18 @@
+import ExcelJS from 'exceljs';
+import { writeFile, readFile, mkdir, copyFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { makeDemo } from '../src/sample.js';
+import { readBytes } from '../src/files.js';
+import { reconcile, guessMapping, DEFAULT_RULES } from '../src/reconcile.js';
+const fixtures = makeDemo();
+await writeFile('../samples/phase3-ledger.csv', '\uFEFF' + [fixtures[0].headers.join(','), ...fixtures[0].rows.map(r => fixtures[0].headers.map(h => r[h]).join(','))].join('\r\n'));
+const book = new ExcelJS.Workbook();
+book.addWorksheet('Transactions').addRows([fixtures[1].headers, ...fixtures[1].rows.map(r => fixtures[1].headers.map(h => r[h]))]);
+await book.xlsx.writeFile('../samples/phase3-bank.xlsx');
+const parsed = await Promise.all(['phase3-ledger.csv', 'phase3-bank.xlsx'].map(async name => readBytes(await readFile(`../samples/${name}`), name)));
+const result = reconcile(...parsed, parsed.map(f => guessMapping(f.headers)), DEFAULT_RULES);
+assert.deepEqual(result.summary, { matched: 270, mismatch: 18, 'only-a': 10, 'only-b': 10, duplicate: 1 });
+parsed.forEach((f, i) => assert.deepEqual(f.rows, fixtures[i].rows));
+console.log(JSON.stringify({ passed: true, rowsIdenticalToLiveGenerator: true, summary: result.summary, sizes: await Promise.all(['phase3-ledger.csv', 'phase3-bank.xlsx'].map(async name => ({ name, bytes: (await readFile(`../samples/${name}`)).length }))), note: 'XLSX ZIP metadata can differ; all parsed cells equal the live generator.' }, null, 2));
+await mkdir('static/ui/mock-data', { recursive: true });
+for (const name of ['phase3-ledger.csv', 'phase3-bank.xlsx']) await copyFile(`../samples/${name}`, `static/ui/mock-data/${name}`);

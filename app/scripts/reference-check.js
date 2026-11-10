@@ -1,0 +1,22 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { reconcile, guessMapping, DEFAULT_RULES } from '../src/reconcile.js';
+import { makeDemo } from '../src/sample.js';
+// Read the owner-specified reference without writing its source tree.
+const referencePath = process.env.RECONCILE_REFERENCE_FILE;
+if (!referencePath) throw new Error('Set RECONCILE_REFERENCE_FILE to your separately supplied original engine before running this optional historical comparison.');
+const text = await readFile(referencePath, 'utf8');
+const original = await import(`data:text/javascript;base64,${Buffer.from(text).toString('base64')}`);
+const files = makeDemo();
+for (const f of files) f.rows[299] = { ...f.rows[299], 'Order ID': 'AP-0300' };
+const mappings = files.map(f => guessMapping(f.headers));
+const oldMaps = mappings.map(m => ({ key: m.keys[0], amount: m.amount, date: m.date }));
+const old = original.reconcile(...files.map((f, i) => original.normalizeRows(f, oldMaps[i], true)), { amountTolerance: '0.01', dateTolerance: '1', trim: true });
+const current = reconcile(...files, mappings, { ...DEFAULT_RULES, caseFold: false, fullWidth: false });
+const statuses = { '完全匹配': 'matched', '金额不符': 'mismatch', '仅 A 有': 'only-a', '仅 B 有': 'only-b' };
+const before = old.map(r => `${r.key}:${statuses[r.status]}`).sort();
+const after = current.results.map(r => `${r.label}:${r.status}`).sort();
+const differences = before.filter((v, i) => v !== after[i]);
+const output = { referencePath, referenceReadOnly: true, input: 'Same 300-row synthetic fixtures, duplicate key replaced on both sides to obtain unique keys; equal dates; normalization additions disabled.', oldResults: before.length, newResults: after.length, perKeyStatusDifferences: differences.length, newSummary: current.summary, deliberateChanges: ['Duplicate groups are explicit rather than greedily paired.', 'Same-key dates outside tolerance are value mismatches rather than two missing rows.'] };
+await writeFile('../logs/reference-comparison.json', JSON.stringify(output, null, 2));
+console.log(JSON.stringify(output, null, 2));
+if (differences.length || before.length !== after.length) process.exitCode = 1;
