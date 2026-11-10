@@ -21,7 +21,7 @@ export function guessMapping(headers) {
 export function amountInCents(value) {
   const clean = normalize(value, { trim: true, fullWidth: true }).replace(/\s/g, '');
   const signed = /^\(.+\)$/.test(clean) ? '-' + clean.slice(1, -1) : clean;
-  const text = signed.replace(/^([+-]?)[¥￥$€£]/, '$1');
+  const text = signed.replace(/^([+-]?)[¥￥$€£]/, '$1').replace(/元$/, '');
   if (!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(\.\d{1,2})?$/.test(text)) return null;
   const cents = Math.round(Number(text.replace(/,/g, '')) * 100);
   return Number.isSafeInteger(cents) ? cents : null;
@@ -30,7 +30,7 @@ export function amountInCents(value) {
 export function dateInDays(value) {
   if (value instanceof Date) return Math.floor(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()) / 86400000);
   if (typeof value === 'number' && value > 0 && value < 100000) return Math.floor(value) - 25569;
-  const text = String(value ?? '').trim();
+  const text = normalize(value, { trim: true, fullWidth: true });
   if (/^\d{5}(\.\d+)?$/.test(text) && Number(text) < 100000) return Math.floor(Number(text)) - 25569;
   let match = text.match(/^(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})(?:日|\b|T)/);
   if (!match) {

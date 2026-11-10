@@ -27,7 +27,7 @@ export function configuredDate(value, formats) {
   for (const format of formats.split(',').map(v => v.trim())) {
     const tokens = [];
     const pattern = format.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/YYYY|MM|DD/g, token => { tokens.push(token); return token === 'YYYY' ? '(\\d{4})' : '(\\d{1,2})'; });
-    const match = String(value ?? '').trim().match(new RegExp(`^${pattern}$`));
+    const match = normalize(value, { trim: true, fullWidth: true }).match(new RegExp(`^${pattern}$`));
     if (match && tokens.includes('YYYY') && tokens.includes('MM') && tokens.includes('DD')) {
       const parts = Object.fromEntries(tokens.map((t, i) => [t, match[i + 1]]));
       return dateInDays(`${parts.YYYY}-${parts.MM}-${parts.DD}`);

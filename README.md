@@ -2,11 +2,11 @@
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Development **3.11.0** adds amount combinations and default grouped creation in Rovo. Production remains **2.1.0** with the previously published source; this update has only been deployed to development. Forge versions are numbered independently per environment. Both Jira and Confluence are connected to the existing production installation. Forge reports Runs on Atlassian eligibility. Production distribution sharing is enabled; use the existing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository is MIT licensed; publishing source does not submit a Devpost entry or upload a video.
+Development **3.12.0** adds amount combinations and default grouped creation in Rovo. Production remains **2.1.0** with the previously published source; this update has only been deployed to development. Forge versions are numbered independently per environment. Both Jira and Confluence are connected to the existing production installation. Forge reports Runs on Atlassian eligibility. Production distribution sharing is enabled; use the existing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository is MIT licensed; publishing source does not submit a Devpost entry or upload a video.
 
 ## Features
 
-- Two to five tables, any reference table, composite keys, worksheet selection and CSV header detection across title/preamble rows, including Chinese headers.
+- Two to five tables, any reference table, composite keys, worksheet selection and CSV header detection across title/preamble rows, including Chinese headers. UTF-8 and GBK/GB18030 are detected automatically; domestic exports may contain quoted thousands separators, ¥/￥/元 amounts, accounting negatives, Chinese/slash dates and full-width characters.
 - Independent numeric tolerances, accepted date formats and text normalization per comparison field. Rule passes are shown with the results.
 - Optional split-payment aggregation plus bounded amount combinations for one payment against several invoices or one invoice against several payments. Component keys, row numbers and integer-cent values remain visible in the UI and XLSX evidence.
 - Matched, mismatched, incomplete-reference, missing-reference and duplicate categories, search/filter/pagination, and explicit acceptance of possible near matches.
@@ -17,7 +17,7 @@ Development **3.11.0** adds amount combinations and default grouped creation in 
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **53/53** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim.
+All cloud acceptance data was synthetic. The source test suite passes **58/58** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim.
 
 Production 2.1.0 passed a read-only Jira smoke check on an existing synthetic test issue: the three attachments returned **3 / 1 / 2 / 2 / 0**, the checked source issue fields remained unchanged, and no issue was created. The existing sharing link still displays the app, both products and the expected scopes. Production Confluence macro rendering remains unverified: the existing synthetic page contains only a development macro, and no page was changed during the read-only production check. Its successful development coverage below is separate.
 
@@ -86,6 +86,10 @@ flowchart TD
 ```
 
 Stable property-order serialization binds reviews and dedupe to unchanged rules and actual evidence. The SDK's named `makeResolver` API is preserved. The original two-table engine remains covered by regression tests.
+
+## Domestic export examples
+
+The [domestic examples](examples/domestic) include UTF-8, GBK, real four-byte GB18030 characters and a clean reference. Live development compared the clean reference with GBK and GB18030 files and matched all three rows, including `￥１，２３４．５０元`, a full-width Chinese date, a quoted thousands separator and an accounting negative. Malformed grouping and precision still fail validation. Unquoted CSV thousands separators remain extra columns and must be quoted by the exporter.
 
 ## Amount combinations
 
