@@ -1,0 +1,141 @@
+{
+  "summary": {
+    "matched": 3,
+    "mismatch": 1,
+    "only-a": 2,
+    "only-b": 2,
+    "duplicate": 0
+  },
+  "inputRows": [
+    6,
+    6,
+    7
+  ],
+  "reasonSummary": {
+    "missing": 4,
+    "amount": 1,
+    "date": 0,
+    "text": 0,
+    "duplicate": 0
+  },
+  "statements": [
+    {
+      "table": 1,
+      "name": "bank.xlsx",
+      "field": "amount",
+      "baseTotal": 2100,
+      "otherTotal": 2405.01,
+      "baseOnly": 400,
+      "otherOnly": 700,
+      "adjusted": 2400,
+      "residual": 5.01,
+      "balances": false,
+      "onlyBase": [
+        "4"
+      ],
+      "onlyOther": [
+        "7"
+      ]
+    },
+    {
+      "table": 2,
+      "name": "invoices.csv",
+      "field": "amount",
+      "baseTotal": 2100,
+      "otherTotal": 2300,
+      "baseOnly": 600,
+      "otherOnly": 800,
+      "adjusted": 2300,
+      "residual": 0,
+      "balances": true,
+      "onlyBase": [
+        "6"
+      ],
+      "onlyOther": [
+        "8"
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "key": "1",
+      "status": "matched",
+      "pass": "Exact key / Aggregated",
+      "presence": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "key": "2",
+      "status": "matched",
+      "pass": "Key + tolerance / Exact key",
+      "presence": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "key": "3",
+      "status": "mismatch",
+      "pass": "Unmatched / Exact key",
+      "presence": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "key": "4",
+      "status": "only-a",
+      "pass": "Unmatched / Exact key",
+      "presence": [
+        true,
+        false,
+        true
+      ]
+    },
+    {
+      "key": "5",
+      "status": "matched",
+      "pass": "Exact key",
+      "presence": [
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "key": "6",
+      "status": "only-a",
+      "pass": "Exact key / Unmatched",
+      "presence": [
+        true,
+        true,
+        false
+      ]
+    },
+    {
+      "key": "7",
+      "status": "only-b",
+      "pass": "Unmatched",
+      "presence": [
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "key": "8",
+      "status": "only-b",
+      "pass": "Unmatched",
+      "presence": [
+        false,
+        false,
+        true
+      ]
+    }
+  ]
+}

@@ -17,7 +17,7 @@ Development **3.10.0** adds default grouped creation in Rovo. Production remains
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **44/44** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim.
+All cloud acceptance data was synthetic. The source test suite passes **47/47** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim.
 
 Production 2.1.0 passed a read-only Jira smoke check on an existing synthetic test issue: the three attachments returned **3 / 1 / 2 / 2 / 0**, the checked source issue fields remained unchanged, and no issue was created. The existing sharing link still displays the app, both products and the expected scopes. Production Confluence macro rendering remains unverified: the existing synthetic page contains only a development macro, and no page was changed during the read-only production check. Its successful development coverage below is separate.
 
@@ -44,7 +44,7 @@ npm run preview
 
 Open `http://127.0.0.1:4178/?v3`. The preview explicitly says **LOCAL PREVIEW · SYNTHETIC DATA**. Only mock mode replaces the Forge bridge, using the shared service/engine and local browser storage; production builds use the real bridge. Local mock issue IDs are synthetic. No Atlassian account is needed for preview.
 
-Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Select B's **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The files and exact settings are in [app/samples](app/samples). The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
+Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Select B's **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The files and exact settings are in [app/samples](app/samples) and the synthetic [examples](examples) package, including the 5.01 residual and domestic encodings. The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
 
 With preview running, `npm run test:ui` runs a headless Edge check at desktop/mobile widths, including real Worker parsing, worksheet/template reload, reviews, export and local uploads. It requires an installed Microsoft Edge browser. Outputs go to ignored `app/logs/`. `npm run check:manifest` validates the local manifest; authenticated Forge lint is `npm run lint:forge`. `npm run licenses` regenerates notices and enforces the existing license allowlist. The optional historical comparison requires your separately supplied engine through `RECONCILE_REFERENCE_FILE`; that private reference is not included.
 
@@ -68,21 +68,26 @@ Product requests use `api.asUser()`. The server derives the issue/page from Forg
 
 ## Architecture
 
-```text
-Jira panel / Confluence macro (React Custom UI)
-  -> Forge bridge -> named makeResolver API (src/index.js)
-  -> source authorization / templates / runs / reviews / issue creation (src/service.js)
-  -> CSV/XLSX parsing (src/files.js), shared multi-table engine (src/multi.js)
-  -> bounded Forge KVS metadata and compact evidence
-
-Browser Worker -> shared parsing/comparison -> display and XLSX export
-Rovo actions -> same service and comparison engine on Forge
-Local mock preview -> same engine/service with synthetic product adapters
+```mermaid
+flowchart TD
+    Jira[Jira issue panel] --> Bridge[Forge bridge and source authorization]
+    Confluence[Confluence macro] --> Bridge
+    Rovo[Rovo actions and explicit create confirmation] --> Service[Shared reconciliation service]
+    Bridge --> Service
+    Jira --> Worker[Browser Worker: CSV/XLSX parsing and comparison]
+    Confluence --> Worker
+    Worker --> Engine[Shared multi-table engine]
+    Worker --> Export[User downloads XLSX evidence]
+    Worker --> Compact[Compact exception evidence]
+    Compact --> Service
+    Service --> Engine
+    Service --> Product[Atlassian product APIs as the user]
+    Service --> KVS[Bounded Forge KVS: templates, runs, reviews, dedupe]
 ```
 
 Stable property-order serialization binds reviews and dedupe to unchanged rules and actual evidence. The SDK's named `makeResolver` API is preserved. The original two-table engine remains covered by regression tests.
 
-## Limits
+## Known limitations
 
 - CSV/XLSX only; UTF-8 and GBK/GB18030 CSV. Encrypted XLSX and legacy XLS are unsupported. Formulas use cached values, without recalculation. Header inference examines the first 20 rows; fix ambiguous source headers when necessary.
 - Up to 50,000 rows per table and 100 XLSX columns; attached compressed files are capped at 2 MiB each, local uploads at 8 MiB. The live development Jira Worker path processed **three 50,000-row CSV tables** (150,000 input rows) in 13.884 seconds including loading, template saving and run persistence. This is the tested maximum for these narrow synthetic CSVs, not a guarantee for every workbook. A 50,001-row sheet is rejected with “Use 1–50,000 data rows per sheet; split larger exports.”

@@ -1,0 +1,85 @@
+{
+  "keys": [
+    [
+      "Order ID"
+    ],
+    [
+      "Reference"
+    ],
+    [
+      "单号"
+    ]
+  ],
+  "fields": [
+    {
+      "id": "field-0",
+      "name": "amount",
+      "type": "number",
+      "columns": [
+        "Amount",
+        "Amt",
+        "金额"
+      ],
+      "abs": "0.01",
+      "percent": 0,
+      "days": 1,
+      "formats": "YYYY-MM-DD,YYYY/MM/DD,YYYY年MM月DD日,MM/DD/YYYY",
+      "trim": true,
+      "caseFold": true,
+      "fullWidth": true,
+      "ignorePunctuation": false
+    },
+    {
+      "id": "field-1",
+      "name": "date",
+      "type": "date",
+      "columns": [
+        "Date",
+        "Payment Date",
+        "日期"
+      ],
+      "abs": "0.01",
+      "percent": 0,
+      "days": 1,
+      "formats": "YYYY-MM-DD,YYYY/MM/DD,YYYY年MM月DD日,MM/DD/YYYY",
+      "trim": true,
+      "caseFold": true,
+      "fullWidth": true,
+      "ignorePunctuation": false
+    },
+    {
+      "id": "field-2",
+      "name": "customer",
+      "type": "text",
+      "columns": [
+        "Customer",
+        "Client",
+        "客户"
+      ],
+      "abs": "0.01",
+      "percent": 0,
+      "days": 1,
+      "formats": "YYYY-MM-DD,YYYY/MM/DD,YYYY年MM月DD日,MM/DD/YYYY",
+      "trim": true,
+      "caseFold": true,
+      "fullWidth": true,
+      "ignorePunctuation": false
+    }
+  ],
+  "baseIndex": 0,
+  "keyRules": {
+    "amountTolerance": "0.01",
+    "percentTolerance": 0,
+    "dateTolerance": 1,
+    "trim": true,
+    "caseFold": true,
+    "fullWidth": true,
+    "leadingZeros": true
+  },
+  "aggregate": [
+    false,
+    false,
+    true
+  ],
+  "acceptedPairs": []
+}
