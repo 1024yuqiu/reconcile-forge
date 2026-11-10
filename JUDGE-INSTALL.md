@@ -18,7 +18,7 @@ This creates real Jira issues and is separate from a read-only comparison. Use a
 
 ## Rovo boundaries
 
-On a Rovo-enabled site, select **Reconciliation Assistant** and supply the real source issue key, two to five attachment IDs in template order and the exact saved template name. Live saved-template run and stored-exception explanation passed on a free Forge demo development site. The agent asked for explicit creation confirmation, but no creation confirmation was sent. **Live Rovo creation, its grouped behaviour and the full run/explain/create sequence remain unverified. Best Agents is not claimed.**
+On a Rovo-enabled site, select **Reconciliation Assistant** and supply the real source issue key, two to five attachment IDs in template order and the exact saved template name. Live saved-template run and stored-exception explanation passed on a free Forge demo development site. After explicit confirmation the agent created one Jira issue for a single selected exception, and a repeated request reused it with zero new issues. Grouped creation through Rovo has not been tested live.
 
 ## Access and limits
 

@@ -13,7 +13,7 @@ Production **2.1.0** contains the same application source as development **3.9.0
 - Evidence-based Explained/Ignored reviews and notes. Unchanged evidence survives saved-template reload; changed evidence invalidates prior reviews.
 - Reconciliation statements and XLSX export, including detailed results and optional coloured worksheets preserving original data-column and row order.
 - Project/space templates, recent run history and checkbox-selected Jira issue creation, either individual or grouped, behind a separate confirmation step.
-- Rovo actions for saved-template runs, explanations of stored exceptions and confirmation-gated issue creation. **Live Rovo creation remains unverified.**
+- Rovo actions for saved-template runs, explanations of stored exceptions and confirmation-gated issue creation with reuse (live-verified for a single exception).
 
 ## What has actually been verified
 
@@ -25,9 +25,9 @@ On development 3.8.0, real Jira and Confluence UI runs compared three attached f
 
 Development 3.9.0 repeated the Jira counts and fixed unstable property-order serialization in evidence identities. One explicit grouped confirmation created one test issue for selected keys 3 and 4. After a full page refresh, saved-template reload and identical rerun, the next confirmation reused that issue with no new issue. Both Explained and Ignored reviews and their notes returned; hiding reviewed exceptions reduced eight displayed rows to six. Changed amounts, row counts and rules invalidate old reviews and prevent issue reuse in local service tests. Old-version records were not migrated or claimed as migrated.
 
-On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. Rovo asked for confirmation before creation; no creation confirmation was sent. **Rovo issue creation, its grouped write behaviour and a fully passing run/explain/create sequence remain unverified. The Best Agents bonus is not claimed.**
+On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. After explicit confirmation, Rovo created one Jira issue for a single selected exception; a repeated request reused that same issue with zero new issues. **Grouped creation through Rovo has not been tested live** (grouped creation and reuse are verified in the Jira panel).
 
-The v9 demo uses real headless cloud captures with synthetic inputs. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the Rovo creation overview is labelled unverified. Unaffected Confluence footage remains identified as development 3.8.0. Neither videos nor a Devpost submission are published by this source update.
+The demo video uses real headless cloud captures with synthetic inputs. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the v10 demo shows a real Rovo create-then-reuse recording. Unaffected Confluence footage remains identified as development 3.8.0.
 
 ## Run locally
 
@@ -88,7 +88,7 @@ Stable property-order serialization binds reviews and dedupe to unchanged rules 
 - Last 20 run summaries per source, up to 200 compact exceptions per run, 180,000-byte run records, and 20 templates per project/space. Full comparison rows are transient. Grouped descriptions may truncate; retain XLSX for full evidence.
 - At most 20 selected exceptions per creation request. Valid target type IDs, project permissions and required fields are necessary. Ordinary serial retries reuse references. Concurrent requests or a crash between Jira creation and KVS recording can still duplicate issues; serialize creation.
 - Original-layout export preserves selected data columns/rows, rather than the source workbook's complete formatting, title preambles or unselected sheets. No FX conversion or unattended schedule is included.
-- Existing pre-fix signatures are not migrated. Offline mocks do not establish real tenant permissions, quotas, consent or distribution eligibility. Rovo creation remains unverified.
+- Existing pre-fix signatures are not migrated. Offline mocks do not establish real tenant permissions, quotas, consent or distribution eligibility. Grouped creation through Rovo is not live-tested.
 
 ## License and dependencies
 
