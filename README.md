@@ -2,7 +2,7 @@
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Judges install Reconcile **4.x** through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). Application package **4.0.0** is deployed to production (Forge deployment **3.3.0**); application versions and Forge environment deployment numbers are independent. Existing production installation is upgraded; the sharing-installation UI check remains pending. This repository is MIT licensed.
+Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). That link installs the latest production major version, **3** (deployed 2026-11-10), which contains application package **4.0.0**. Forge major/deployment numbers (deployment 3.3.0) and the application package version are independent. `forge version list -e production` shows major 3 as the newest production version, and `forge install list` shows the existing production installation on major 3, Up-to-date. Installing on a brand-new site and a new user's first consent screen have not been tested. This repository is MIT licensed.
 
 ## Features
 
@@ -19,7 +19,7 @@ Judges install Reconcile **4.x** through the production sharing link in [JUDGE-I
 
 All cloud acceptance data was synthetic. The source test suite passes **74/74** tests, plus **5/5** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
 
-The phase 15 English v12 editorial cut is 173.6 seconds and uses verified earlier live development footage. Clean captures of the changed UI and the sharing-installation check remain pending because browser control was unavailable. This cut remains provisional until those checks and new live captures are completed.
+The published demo video is v13: **3:19** (198.8 seconds), 1920×1080 at 30 fps, at https://youtu.be/a5KJ6qXPxVk. It combines current production captures (the audit trail, one newly generated Confluence report and its opened link) with earlier live development captures; every scene carries an on-screen source label. The Rovo segment replays existing recorded conversations read-only; no new Rovo action was run for the recording. Decode, freeze, silence and clipping checks passed.
 
 ## Run locally
 
@@ -150,4 +150,4 @@ On a free Forge demo development site, the real Rovo agent ran a saved three-tab
 Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded during that development acceptance; application package 4.0.0 was subsequently deployed to production as described above.
 
 
-The demo video uses real headless cloud captures with synthetic inputs. The locally prepared English v11 demo is 172.8 seconds, 1920×1080 at 30 fps; its audio/video decode, freeze, silence and clipping checks passed. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the v11 demo includes the real Rovo grouped create-then-reuse recording and phase 14 feature captures. Unaffected Confluence footage remains identified as development 3.8.0.
+Earlier editorial cuts (v11, v12) were superseded by the published v13 video described above. Unaffected Confluence footage in it remains identified as development 3.8.0.
