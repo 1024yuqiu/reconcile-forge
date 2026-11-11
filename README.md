@@ -2,7 +2,7 @@
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). That link installs the latest production major version, **3** (deployed 2026-11-10), which contains application package **4.0.0**. Forge major/deployment numbers (deployment 3.3.0) and the application package version are independent. `forge version list -e production` shows major 3 as the newest production version, and `forge install list` shows the existing production installation on major 3, Up-to-date. Installing on a brand-new site and a new user's first consent screen have not been tested. This repository is MIT licensed.
+Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). That link installs the latest production major version, **3** (deployed 2026-11-10), which contains application package **4.0.0**. Forge major/deployment numbers (deployment 3.3.0) and the application package version are independent. `forge version list -e production` shows major 3 as the newest production version, and `forge install list` shows the existing production installation on major 3, Up-to-date. A brand-new account and site installed it through the sharing link on 2026-11-11: no extra consent page, no error, panel header **v4**, and the three-table sample returned 3 / 1 / 2 / 2 / 0. This repository is MIT licensed.
 
 ## Features
 
@@ -42,7 +42,7 @@ With preview running, `npm run test:ui` runs a headless Edge check at desktop/mo
 
 ## Install your own deployment
 
-For the existing shared production app, follow [JUDGE-INSTALL.md](JUDGE-INSTALL.md). Jira is required; Confluence is an optional connection on the same site. The public Forge app ID in the manifest identifies the registered app and is not a credential. To deploy a separate app, register your own Forge app identity, build the UI, lint, deploy and install it with the Forge CLI. Installation needs a site administrator; reading files and creating issues still depend on the invoking user's permissions. Fresh judge-site installation and a new user's first consent flow are not claimed as verified.
+For the existing shared production app, follow [JUDGE-INSTALL.md](JUDGE-INSTALL.md). Jira is required; Confluence is an optional connection on the same site. The public Forge app ID in the manifest identifies the registered app and is not a credential. To deploy a separate app, register your own Forge app identity, build the UI, lint, deploy and install it with the Forge CLI. Installation needs a site administrator; reading files and creating issues still depend on the invoking user's permissions. Fresh-site installation through the sharing link was checked on 2026-11-11 (see JUDGE-INSTALL.md).
 
 ## Permissions and storage
 
@@ -141,7 +141,7 @@ All values are development measurements on three identical, narrow synthetic tab
 
 Production 2.1.0 passed a read-only Jira smoke check on an existing synthetic test issue: the three attachments returned **3 / 1 / 2 / 2 / 0**, the checked source issue fields remained unchanged, and no issue was created. The existing sharing link still displays the app, both products and the expected scopes. Production Confluence macro rendering remains unverified: the existing synthetic page contains only a development macro, and no page was changed during the read-only production check. Its successful development coverage below is separate.
 
-On development 3.8.0, real Jira and Confluence UI runs compared three attached files containing **6 / 6 / 7** data rows. Both returned **3 matched / 1 mismatch / 2 only in reference / 2 missing from reference / 0 duplicates**. Actual downloaded workbooks were checked for ten worksheets, eight result keys and the differing amount cell's colour.
+On development 3.8.0, real Jira and Confluence UI runs compared three attached files containing **6 / 6 / 7** data rows. Both returned **3 matched / 1 value mismatch / 2 only in base / 2 missing from base / 0 duplicates**. Actual downloaded workbooks were checked for ten worksheets, eight result keys and the differing amount cell's colour.
 
 Development 3.9.0 repeated the Jira counts and fixed unstable property-order serialization in evidence identities. One explicit grouped confirmation created one test issue for selected keys 3 and 4. After a full page refresh, saved-template reload and identical rerun, the next confirmation reused that issue with no new issue. Both Explained and Ignored reviews and their notes returned; hiding reviewed exceptions reduced eight displayed rows to six. Changed amounts, row counts and rules invalidate old reviews and prevent issue reuse in local service tests. Old-version records were not migrated or claimed as migrated.
 

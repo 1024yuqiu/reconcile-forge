@@ -4,7 +4,7 @@ All rows and customer labels are invented.
 
 ## Three attached tables
 
-`three-tables/ledger.csv`, `bank.xlsx` (Transactions sheet), and `invoices.csv` use `config.json`. Expected counts: 3 matched, 1 mismatch, 2 only in base, 2 missing from base, 0 duplicates. The bank reconciliation statement retains the **5.01** residual. Components remain visible; no FX conversion is performed.
+`three-tables/ledger.csv`, `bank.xlsx` (Transactions sheet), and `invoices.csv` use `config.json`. Expected counts: 3 matched, 1 mismatch, 2 only in base, 2 missing from base, 0 duplicates. Key 3's row shows **Δ 5**; the **5.01** residual (5 plus Key 2's tolerated 0.01) is shown in the collapsible Reconciliation statement section. Components remain visible; no FX conversion is performed.
 
 ## Domestic exports
 
