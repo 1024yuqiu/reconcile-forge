@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import ExcelJS from 'exceljs';
 await mkdir('logs', { recursive: true });
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({ ...(process.env.RECONCILE_BROWSER === 'chromium' ? {} : { channel: 'msedge' }), headless: true });
 const errors = [], evidence = [];
 async function confirmMapping(page) { const button = page.getByRole('button', { name: 'Confirm column mapping', exact: true }); if (await button.isEnabled()) await button.click(); }
 try {

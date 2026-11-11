@@ -2,7 +2,7 @@ import Papa from 'papaparse';
 import { MAX_ROWS } from './reconcile.js';
 export const MAX_BYTES = 8 * 1024 * 1024;
 
-export function matrixToFile(matrix, name, sheet = 'CSV', sheets = ['CSV'], headerIndex) {
+export function matrixToFile(matrix, name, sheet = 'CSV', sheets = ['CSV'], headerIndex, allowEmpty = false) {
   if (headerIndex === undefined) {
     // Prefer a plausible named header over a title/preamble row.
     let best = -1;
@@ -13,7 +13,8 @@ export function matrixToFile(matrix, name, sheet = 'CSV', sheets = ['CSV'], head
       if (score > best) { best = score; headerIndex = i; }
     });
   }
-  if (!Number.isInteger(headerIndex) || headerIndex < 0 || headerIndex >= matrix.length - 1) throw new Error('Cannot detect a header with data below it.');
+  if (allowEmpty && headerIndex === undefined) headerIndex = matrix.findIndex(row => row.some(v => String(v ?? '').trim()));
+  if (!Number.isInteger(headerIndex) || headerIndex < 0 || headerIndex >= matrix.length - (allowEmpty ? 0 : 1)) throw new Error('Cannot detect a header with data below it.');
   const headers = matrix[headerIndex].map(v => String(v ?? '').trim());
   while (headers.at(-1) === '') headers.pop();
   if (!headers.length || headers.some(h => !h) || new Set(headers).size !== headers.length) throw new Error('Header contains blank or duplicate column names.');
@@ -24,7 +25,7 @@ export function matrixToFile(matrix, name, sheet = 'CSV', sheets = ['CSV'], head
     rows.push(Object.fromEntries(headers.map((h, c) => [h, line[c] ?? ''])));
     rowNumbers.push(headerIndex + i + 2);
   });
-  if (!rows.length || rows.length > MAX_ROWS) throw new Error(`Use 1–${MAX_ROWS.toLocaleString('en-US')} data rows per sheet; split larger exports.`);
+  if ((!allowEmpty && !rows.length) || rows.length > MAX_ROWS) throw new Error(`Use 1–${MAX_ROWS.toLocaleString('en-US')} data rows per sheet; split larger exports.`);
   return { name, headers, rows, rowNumbers, sheet, sheets, headerRow: headerIndex + 1 };
 }
 
@@ -44,23 +45,34 @@ export async function readBytes(bytes, name, sheetName, headerRow) {
   const { default: ExcelJS } = await import('exceljs');
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(bytes);
-  const sheet = sheetName ? book.getWorksheet(sheetName) : book.worksheets[0];
-  if (!sheet) throw new Error('Worksheet not found.');
-  if (sheet.rowCount > MAX_ROWS + 20 || sheet.columnCount > 100) throw new Error('Worksheet exceeds 50,000 rows plus header area or 100 columns. Split the workbook.');
-  const matrix = [];
-  sheet.eachRow({ includeEmpty: true }, row => {
-    const values = Array.from({ length: sheet.columnCount }, (_, i) => {
-      const value = row.getCell(i + 1).value;
-      if (value && typeof value === 'object' && !(value instanceof Date)) {
-        if ('formula' in value || 'sharedFormula' in value) return value.result ?? '';
-        if ('richText' in value) return value.richText.map(v => v.text).join('');
-        return value.text ?? '';
-      }
-      return value ?? '';
+  function parseSheet(sheet) {
+    if (sheet.rowCount > MAX_ROWS + 20 || sheet.columnCount > 100) throw new Error('Worksheet exceeds 50,000 rows plus header area or 100 columns. Split the workbook.');
+    const matrix = [];
+    sheet.eachRow({ includeEmpty: true }, row => {
+      matrix.push(Array.from({ length: sheet.columnCount }, (_, i) => {
+        const value = row.getCell(i + 1).value;
+        if (value && typeof value === 'object' && !(value instanceof Date)) {
+          if ('formula' in value || 'sharedFormula' in value) return value.result ?? '';
+          if ('richText' in value) return value.richText.map(v => v.text).join('');
+          return value.text ?? '';
+        }
+        return value ?? '';
+      }));
     });
-    matrix.push(values);
+    return matrixToFile(matrix.length ? matrix : [['Column 1']], name, sheet.name, book.worksheets.map(s => s.name), headerRow === undefined ? undefined : headerRow - 1, true);
+  }
+  if (sheetName) {
+    const sheet = book.getWorksheet(sheetName);
+    if (!sheet) throw new Error('Worksheet not found.');
+    return parseSheet(sheet);
+  }
+  // Count parsed data rows, excluding title/header/blank rows. Ties keep workbook order.
+  const candidates = book.worksheets.map(sheet => {
+    try { return { file: parseSheet(sheet) }; } catch (error) { return { error }; }
   });
-  return matrixToFile(matrix, name, sheet.name, book.worksheets.map(s => s.name), headerRow === undefined ? undefined : headerRow - 1);
+  const valid = candidates.filter(c => c.file).sort((a, b) => b.file.rows.length - a.file.rows.length);
+  if (!valid.length) throw candidates[0]?.error || new Error('Worksheet not found.');
+  return valid[0].file;
 }
 
 export async function exportWorkbook(run, files, rules) {

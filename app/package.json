@@ -1,6 +1,6 @@
 {
   "name": "reconcile-for-atlassian",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "preview": "vite --config vite.config.js --mode mock --host 127.0.0.1",
     "test": "node --test tests/*.test.js",
     "test:ui": "node scripts/ui-check.js",
+    "test:d1": "node scripts/d1-ui-check.js",
     "test:reference": "node scripts/reference-check.js",
     "check:manifest": "node scripts/manifest-check.js",
     "samples": "node scripts/samples.js",

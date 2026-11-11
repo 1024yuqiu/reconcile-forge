@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke, view, router } from '@forge/bridge';
 import { DEFAULT_RULES, STATUSES } from '../../src/reconcile.js';
 import { mappingSuggestions, PASSES } from '../../src/multi.js';
 import './style.css';
+import { version } from '../../package.json';
 const labels = { matched: 'Matched', mismatch: 'Value mismatch', 'only-a': 'Only in base', 'only-b': 'Missing from base', duplicate: 'Duplicate keys' };
 const isMock = import.meta.env.MODE === 'mock';
 const letter = i => String.fromCharCode(65 + i);
@@ -29,26 +30,52 @@ function App() {
   const [mappingAdvice, setMappingAdvice] = useState([]), [mappingConfirmed, setMappingConfirmed] = useState(false);
   const [issueTypes, setIssueTypes] = useState([]);
   const [runNote, setRunNote] = useState(''), [audit, setAudit] = useState(null), [reportPageId, setReportPageId] = useState(''), [report, setReport] = useState(null);
-  async function action(fn) { setBusy(true); setError(''); setNotice(''); try { await fn(); } catch (e) { setError(e.message); } finally { setBusy(false); } }
+  const working = useRef(false), sessionKey = useRef(null);
+  const [restored, setRestored] = useState(false);
+  async function action(fn) { if (working.current) return; working.current = true; setBusy(true); setError(''); setNotice(''); try { await fn(); } catch (e) { setError(e.message); } finally { working.current = false; setBusy(false); } }
   function invalidate() { setResult(null); setSelected([]); setConfirm(false); setReviewId(''); setAudit(null); setReport(null); }
   function initialConfig(next) { const suggestions = mappingSuggestions(next); setMappingAdvice(suggestions.advice); setMappingConfirmed(false); return { ...suggestions.proposed, baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: false }, aggregate: next.map(() => false), acceptedPairs: [] }; }
   async function load(nextSources) {
+    setMappingConfirmed(false); invalidate();
+    try {
     const next = [];
     for (const s of nextSources) {
       const f = s.local ? await workerTask({ operation: 'parse', bytes: s.bytes, name: s.name, sheet: s.sheet }) : await invoke('loadSource', s);
       next.push(f.bytes64 ? await workerTask({ operation: 'parse', bytes: Uint8Array.from(atob(f.bytes64), c => c.charCodeAt(0)), name: f.name, sheet: s.sheet }) : f);
     }
-    setFiles(next); setConfig(initialConfig(next)); invalidate();
+    setFiles(next); setSources(nextSources.map((s, i) => ({ ...s, sheet: next[i].sheet }))); setConfig(initialConfig(next)); invalidate();
+    } catch (error) { setConfig(null); setFiles(nextSources.map(() => null)); throw error; }
   }
   useEffect(() => { action(async () => {
     await view.theme.enable(); const data = await invoke('bootstrap'); setBoot(data);
     setProject(data.scope.namespace.startsWith('project:') ? data.scope.namespace.slice(8) : '');
-    if (data.attachments.length >= 2) { const next = data.attachments.slice(0, 2).map(a => ({ id: a.id })); setSources(next); await load(next); }
+    sessionKey.current = `reconcile-session:${data.scope.kind}:${data.scope.id}`;
+    let previous;
+    try { previous = JSON.parse(sessionStorage.getItem(sessionKey.current)); } catch {}
+    if (previous?.sources?.length >= 2 && previous.sources.length <= 5 && previous.sources.every(s => !s.local && (s.kind === 'jql' || data.attachments.some(a => a.id === s.id)))) {
+      setSources(previous.sources); setRestored(true); await load(previous.sources);
+      if (previous.config?.keys?.length === previous.sources.length) setConfig(previous.config);
+      setMappingConfirmed(false);
+    } else if (data.attachments.length >= 2) { const next = data.attachments.slice(0, 2).map(a => ({ id: a.id })); setSources(next); await load(next); }
   }); }, []);
+  useEffect(() => {
+    if (!sessionKey.current || busy) return;
+    try {
+      if (sources.some(s => s.local || (!s.id && s.kind !== 'jql'))) sessionStorage.removeItem(sessionKey.current);
+      else sessionStorage.setItem(sessionKey.current, JSON.stringify({ sources, config }));
+    } catch {}
+  }, [sources, config, busy]);
+  function reset() {
+    setSources([{ id: '' }, { id: '' }]); setFiles([null, null]); setConfig(null); setMappingAdvice([]); setMappingConfirmed(false);
+    invalidate(); setRunNote(''); setRestored(false); setError(''); setNotice(''); setFilter('all'); setSearch(''); setPage(0); setTab('workspace');
+    setOriginalLayout(false); setStatementView(false); setHideReviewed(false); setReviewNote(''); setReportPageId('');
+    try { sessionStorage.removeItem(sessionKey.current); } catch {}
+  }
   function changeSource(i, value) { setSources(s => s.map((v, j) => i === j ? value : v)); setFiles(f => f.map((v, j) => i === j ? null : v)); invalidate(); }
   function changeConfig(next) { setConfig(next); setMappingConfirmed(false); invalidate(); }
   function updateField(id, patch) { changeConfig({ ...config, fields: config.fields.map(f => f.id === id ? { ...f, ...patch } : f) }); }
   async function run(nextConfig = config) {
+    if (!files.every(f => f?.rows.length) || !config) throw new Error('Reload the sources before running.');
     if (!mappingConfirmed) throw new Error('Review and confirm column mapping before running. Low-confidence columns need a manual choice.');
     const output = await workerTask({ operation: 'run', files, config: nextConfig });
     if (sources.every(s => !s.local)) {
@@ -63,7 +90,7 @@ function App() {
   async function applyTemplate(t) {
     if (t.sources && t.sources.length === sources.length) {
       const nextSources = sources.map((s, i) => ({ ...s, sheet: t.sources[i].sheet }));
-      if (nextSources.some((s, i) => s.sheet !== sources[i].sheet)) { await load(nextSources); setSources(nextSources); }
+      if (nextSources.some((s, i) => s.sheet !== sources[i].sheet)) { await load(nextSources); }
     }
     if (t.config) {
       if (t.config.keys.length !== sources.length) throw new Error(`This template needs ${t.config.keys.length} tables. Add or remove tables first.`);
@@ -80,9 +107,10 @@ function App() {
   const filtered = result?.results.filter(r => (filter === 'all' || r.status === filter) && (!hideReviewed || !r.review) && (!statementView || r.pairs.some(p => ['only-a', 'only-b'].includes(p.status))) && JSON.stringify(r).toLowerCase().includes(search.toLowerCase())) || [];
   const savedIds = new Set(result?.results.filter(r => r.signature).map(r => r.id));
   return <main>
-    <header className="topbar"><div className="brand"><img src="./icon.svg" alt=""/><strong>Reconcile</strong><span>for Jira & Confluence</span></div><span className="environment">{isMock ? 'LOCAL PREVIEW · SYNTHETIC DATA' : 'ATLASSIAN FORGE · v4'}</span></header>
-    <div className="heading"><div><p className="eyebrow">{boot?.scope.kind === 'confluence' ? 'CONFLUENCE PAGE' : 'JIRA ISSUE'} / {boot?.scope.id || 'Loading'}</p><h1>{sources.length === 2 ? 'Two exports. One clear answer.' : 'Your exports. One clear answer.'}</h1><p>Match records, investigate differences and turn exceptions into action.</p></div><span className="privacy">No external data egress</span></div>
+    <header className="topbar"><div className="brand"><img src="./icon.svg" alt=""/><strong>Reconcile</strong><span>for Jira & Confluence</span></div><span className="environment">{isMock ? `LOCAL PREVIEW · SYNTHETIC DATA · v${version}` : `ATLASSIAN FORGE · v${version}`}</span></header>
+    <div className="heading"><div><p className="eyebrow">{boot ? `${boot.scope.kind === 'confluence' ? 'CONFLUENCE PAGE' : 'JIRA ISSUE'} / ${boot.scope.id}` : 'Reconcile / Loading'}</p><h1>{sources.length === 2 ? 'Two exports. One clear answer.' : 'Your exports. One clear answer.'}</h1><p>Match records, investigate differences and turn exceptions into action.</p></div><span className="privacy">No external data egress</span></div>
     <nav aria-label="Workspace"><button className={tab === 'workspace' ? 'active' : ''} onClick={() => setTab('workspace')}>Reconciliation</button><button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>Run history <span>{boot?.history.length || 0}</span></button></nav>
+    {restored && <div className="alert" role="status">Restored from last session — re-check sources A/B/C and worksheets.</div>}
     {error && <div className="alert error" role="alert">{error}</div>}{notice && <div className="alert" role="status">{notice}</div>}
     {tab === 'history' ? <section className="card"><h2>Recent runs on this {boot?.scope.kind === 'jira' ? 'issue' : 'page'}</h2><p>Last 20 summaries. Open the source files and rerun to review full results.</p>{boot?.history.map(h => <article className="history" key={h.id}><strong>{h.files.join(' ↔ ')}</strong><span>{new Date(h.when).toLocaleString()} · {h.who}</span><code>{h.id}</code><p>{Object.entries(h.summary).map(([s, n]) => `${labels[s]}: ${n}`).join(' · ')}</p></article>)}</section> : <>
     <section className="sources"><h2><span className="step">1</span> Choose your sources</h2><div className="source-grid">{sources.map((source, i) => <div className="card source" key={i}>
@@ -90,18 +118,16 @@ function App() {
       <label>Source<select disabled={busy} aria-label={`Source ${letter(i)}`} value={source.kind === 'jql' ? 'jql' : source.id} onChange={e => changeSource(i, e.target.value === 'jql' ? { kind: 'jql', jql: '' } : { id: e.target.value })}><option value="">Select attachment</option>{boot?.attachments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}{i > 0 && <option value="jql">JQL result</option>}</select></label>
       {source.kind === 'jql' && <label>JQL query<textarea value={source.jql} onChange={e => changeSource(i, { kind: 'jql', jql: e.target.value })}/></label>}
       {files[i] && <div className="file-meta"><strong>{files[i].name}</strong><span>{files[i].rows.length.toLocaleString()} rows · {files[i].headers.length} columns · header row {files[i].headerRow || 1}</span>{files[i].sheets?.length > 1 && <label>Worksheet {letter(i)}<select aria-label={`Worksheet ${letter(i)}`} value={files[i].sheet} disabled={busy} onChange={e => { const sheet = e.target.value; action(async () => {
-        const nextSources = sources.map((s, j) => j === i ? { ...s, sheet } : s); setSources(nextSources);
-        const loaded = sources[i].local ? { bytes: sources[i].bytes, name: files[i].name } : await invoke('loadSource', nextSources[i]);
-        const parsed = loaded.bytes || loaded.bytes64 ? await workerTask({ operation: 'parse', bytes: loaded.bytes || Uint8Array.from(atob(loaded.bytes64), c => c.charCodeAt(0)), name: loaded.name, sheet }) : loaded;
-        const next = files.map((f, j) => j === i ? parsed : f); setFiles(next); setConfig(initialConfig(next)); invalidate();
-      }); }}>{files[i].sheets.map(s => <option key={s}>{s}</option>)}</select></label>}</div>}
+        const nextSources = sources.map((s, j) => j === i ? { ...s, sheet } : s);
+        setSources(nextSources); await load(nextSources);
+      }); }}>{files[i].sheets.map(s => <option key={s}>{s}</option>)}</select></label>}{files[i].rows.length <= 1 && <p role="status">This sheet has almost no data rows — check the worksheet selection.</p>}</div>}
       {isMock && <label className="upload">Or use a local XLSX / CSV<input type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => { const file = e.target.files[0]; if (file) action(async () => {
         const bytes = await file.arrayBuffer(), parsed = await workerTask({ operation: 'parse', bytes, name: file.name });
         const next = files.map((f, j) => i === j ? parsed : f); setFiles(next); setSources(s => s.map((v, j) => i === j ? { id: '', local: true, bytes, name: file.name } : v)); if (next.every(Boolean)) setConfig(initialConfig(next)); invalidate();
       }); }}/></label>}
     </div>)}</div>
-    <div className="source-actions"><button disabled={busy || sources.some(s => !s.local && s.kind !== 'jql' && !s.id)} onClick={() => action(() => load(sources))}>Load selected sources</button><button disabled={busy || sources.length === 5} onClick={() => { setSources(s => [...s, { id: '' }]); setFiles(f => [...f, null]); invalidate(); }}>Add table</button><span className="hint">2–5 CSV / XLSX tables · Attached file limit 2 MB</span></div></section>
-    {files.every(Boolean) && config && <section className="card mapping"><h2><span className="step">2</span> Map columns & set rules</h2>
+    <div className="source-actions"><button disabled={busy} onClick={reset}>Reset</button><button disabled={busy || sources.some(s => !s.local && s.kind !== 'jql' && !s.id)} onClick={() => action(() => load(sources))}>Load selected sources</button><button disabled={busy || sources.length === 5} onClick={() => { setConfig(null); setMappingConfirmed(false); setSources(s => [...s, { id: '' }]); setFiles(f => [...f, null]); invalidate(); }}>Add table</button><span className="hint">2–5 CSV / XLSX tables · Attached file limit 2 MB</span></div></section>
+    {files.every(Boolean) && config && <section className="card mapping"><fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}><h2><span className="step">2</span> Map columns & set rules</h2>
       <div className="template"><label>Project / space template<select aria-label="Saved template" disabled={busy} value="" onChange={e => { const t = boot.templates.find(t => t.name === e.target.value); if (t) action(() => applyTemplate(t)); }}><option value="">Select saved rules</option>{boot?.templates.map(t => <option key={t.name}>{t.name}</option>)}</select></label><label>Template name<input value={templateName} maxLength={80} onChange={e => { setTemplateName(e.target.value); invalidate(); }}/></label><button disabled={busy || !mappingConfirmed} onClick={() => action(async () => { const templates = await invoke('saveTemplate', { name: templateName, config, sources: sources.map(s => ({ sheet: s.sheet })) }); setBoot({ ...boot, templates }); setNotice('Template saved for this project or space.'); })}>Save template</button></div>
       <div className="card" aria-label="Column mapping suggestions"><h3>Column mapping suggestions</h3><p>{mappingConfirmed ? 'Column mapping confirmed. Selecting a saved template confirms its previously saved mapping.' : 'Proposals only: review columns and sample values, then confirm. Low-confidence proposals are left blank for a manual choice.'}</p>{!mappingConfirmed && <ul>{mappingAdvice.map((a, i) => <li key={i}>Table {letter(a.table)} · {a.target} → {a.source} · <b>{a.confidence}</b> · {a.reason}</li>)}</ul>}<button disabled={busy || mappingConfirmed || config.keys.some(keys => keys.some(key => !key)) || config.fields.some(f => f.type !== 'ignore' && f.columns.some(column => !column))} onClick={() => { setMappingConfirmed(true); setNotice('Column mapping confirmed. You can now save these rules or run reconciliation.'); }}>Confirm column mapping</button></div>
       <label className="base-picker">Base table<select aria-label="Base table" value={config.baseIndex} onChange={e => changeConfig({ ...config, baseIndex: Number(e.target.value), acceptedPairs: [] })}>{files.map((f, i) => <option key={i} value={i}>{letter(i)} · {f.name}</option>)}</select></label>
@@ -114,14 +140,14 @@ function App() {
         {f.type === 'date' && <div className="rules"><label>Date ± days<input aria-label={`Date ± days ${f.name}`} type="number" min="0" max="365" value={f.days ?? 0} onChange={e => updateField(f.id, { days: e.target.value })}/></label><label>Accepted formats<input aria-label={`Accepted formats ${f.name}`} value={f.formats || ''} placeholder="YYYY-MM-DD,DD/MM/YYYY" onChange={e => updateField(f.id, { formats: e.target.value })}/></label></div>}
         {f.type === 'text' && <div className="rules">{[['trim', 'Trim'], ['caseFold', 'Ignore case'], ['fullWidth', 'Normalize full-width'], ['ignorePunctuation', 'Ignore punctuation']].map(([key, title]) => <label className="check" key={key}><input type="checkbox" checked={Boolean(f[key])} onChange={e => updateField(f.id, { [key]: e.target.checked })}/>{title}</label>)}</div>}
       </div>)}<button disabled={config.fields.length >= 50} onClick={() => changeConfig({ ...config, fields: [...config.fields, { id: crypto.randomUUID(), name: 'New field', type: 'exact', columns: files.map(() => '') }] })}>Add field rule</button></div>
-      <label>Run annotation<textarea maxLength={500} value={runNote} onChange={e => setRunNote(e.target.value)} placeholder="Optional evidence or review context"/></label>
-      <div className="run-bar"><p>Duplicates need review unless aggregation is enabled. Numeric fields are summed; conflicting text/date fields stay flagged.</p><button className="primary" disabled={busy || !mappingConfirmed} onClick={() => action(() => run())}>{busy ? 'Working…' : 'Run reconciliation'}</button></div></section>}
+      <label>Run annotation<textarea disabled={busy} maxLength={500} value={runNote} onChange={e => setRunNote(e.target.value)} placeholder="Optional evidence or review context"/></label>{result?.id && <><button disabled={busy} onClick={() => action(async () => { const summary = await invoke('annotateRun', { runId: result.id, note: runNote }); setResult(r => ({ ...r, auditSummary: summary })); setAudit(null); setNotice('Annotation saved to this run. Existing reports keep their generated snapshot.'); })}>Save run annotation</button><p className="hint">Save changes to this run after completion. Existing Confluence reports keep their generated snapshot.</p></>}
+      <div className="run-bar"><p>Duplicates need review unless aggregation is enabled. Numeric fields are summed; conflicting text/date fields stay flagged.</p><button className="primary" disabled={busy || !mappingConfirmed || files.some(f => !f?.rows.length)} onClick={() => action(() => run())}>{busy ? 'Working…' : 'Run reconciliation'}</button></div></fieldset></section>}
     {result && <section className="results"><div className="section-title"><div><p className="eyebrow">RECONCILIATION COMPLETE</p><h2>Every difference, accounted for.</h2><p>{result.inputRows.map((n, t) => `${n.toLocaleString()} rows in ${letter(t)}`).join(' · ')} · Counts below are unique keys</p></div><div><label className="check"><input type="checkbox" checked={originalLayout} onChange={e => setOriginalLayout(e.target.checked)}/>Include original table layouts</label><button disabled={busy} onClick={() => action(async () => download(await workerTask({ operation: 'export', run: result, files, options: { originalLayout } }), 'reconciliation.xlsx'))}>Export XLSX ↓</button></div></div>
       <div className="pass-strip">{PASSES.map((p, i) => <span key={p}>{i + 1}. {p}</span>)}</div>
       <div className="metrics">{STATUSES.map(s => <button key={s} className={`metric ${s} ${filter === s ? 'selected' : ''}`} onClick={() => { setFilter(s); setPage(0); }}><span>{labels[s]}</span><strong>{result.summary[s]}</strong></button>)}</div>
       <p>Reasons: {Object.entries(result.reasonSummary).map(([k, v]) => `${k}: ${v}`).join(' · ')}. Reasons can overlap.</p>
       {result.id && <div className="card" aria-label="Run audit and report"><h3>Run audit & Confluence report</h3><p>Actor accountId: <code>{result.auditSummary?.who}</code></p><p>Template version: <code>{result.auditSummary?.templateVersion}</code></p><p>Annotation: {result.auditSummary?.note || 'None'}</p><button disabled={busy} onClick={() => action(async () => setAudit(await invoke('auditRun', { runId: result.id })))}>Load audit trail</button>{audit && <div className="audit-events" aria-label="Audit events">{audit.events.map((event, i) => <article className="card" key={i}><h4>{event.event}</h4><p>When: {event.when}</p><p>Actor accountId: {event.who}</p>{event.templateVersion && <p>Template version: {event.templateVersion}</p>}{event.note && <p>Annotation: {event.note}</p>}{event.status && <p>Review: {event.status}</p>}{event.selectedIds && <p>Selected exceptions: {event.selectedIds.join(', ')} · Confirmed: {String(event.confirmed)} · Grouped: {String(event.grouped)} · Project: {event.project} · Type: {event.issueType}</p>}{event.created && <p>Created: {event.created.join(', ') || 'none'} · Reused: {event.reused.join(', ') || 'none'}</p>}{event.pageId && <p>Report page: {event.pageId}</p>}</article>)}</div>}<label>Existing Confluence page ID in the report space<input inputMode="numeric" value={reportPageId} onChange={e => { setReportPageId(e.target.value); setReport(null); }} placeholder={boot?.scope.kind === 'confluence' ? 'Use this source page’s space' : 'Select the intended test space via an existing page'}/></label><button disabled={busy || (boot?.scope.kind !== 'confluence' && !reportPageId)} onClick={() => action(async () => { const page = await invoke('createReport', { runId: result.id, pageId: reportPageId }); setReport(page); setNotice(`${page.reused ? 'Reused' : 'Created'} Confluence report page ${page.id}. Existing pages were not changed.`); })}>Generate Confluence report</button>{report && <p>{report.reused ? 'Reused' : 'Created'} page <b>{report.id}</b> <button onClick={() => router.open(report.url || `/wiki/pages/${report.id}`)}>Open report</button></p>}</div>}
-      {!!result.readyToClose?.length && <div className="card" aria-label="Ready to close"><h3>Ready to close</h3><p>Server-verified rerun evidence was added to the original issues. Close them manually after review; statuses were not changed.</p>{result.readyToClose.map(r => <p key={r.issue}><b>{r.issue}</b> · Evidence run <code>{r.evidenceRunId}</code></p>)}</div>}
+      {!!result.readyToClose?.length && <div className="card" aria-label="Ready to close"><h3>Ready to close</h3><p>Server-verified rerun evidence was added to the exception issues created by the app. Close them manually after review; statuses were not changed.</p>{result.readyToClose.map(r => <p key={r.issue}><b>{r.issue}</b> · Evidence run <code>{r.evidenceRunId}</code></p>)}</div>}
       {config.combinationMatch && <p>Amount combinations: {result.combinationSearch?.checks || 0} checks · {result.combinationSearch?.ambiguous || 0} ambiguous anchors left for review{result.combinationSearch?.bounded && ' · Search limit reached; remaining rows need review.'}</p>}
       {!!result.statements.length && <details className="card statement"><summary>Reconciliation statement & unreconciled items</summary>{result.statements.map(s => <article key={s.table}><h3>{files[result.baseIndex].name} ↔ {s.name} · {s.field}</h3><p>{s.baseTotal.toFixed(2)} base − {s.baseOnly.toFixed(2)} in base only + {s.otherOnly.toFixed(2)} in other only = {s.adjusted.toFixed(2)} adjusted; other total {s.otherTotal.toFixed(2)}. <b>{s.balances ? 'Balances' : `Does not balance · residual ${s.residual.toFixed(2)}`}</b></p><p>In base, not other: {s.onlyBase.join(', ') || 'None'}</p><p>In other, not base: {s.onlyOther.join(', ') || 'None'}</p></article>)}</details>}
       <div className="card"><div className="filters"><label>Show<select aria-label="Result category" value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}><option value="all">All categories</option>{STATUSES.map(s => <option key={s} value={s}>{labels[s]}</option>)}</select></label><label>Search<input type="search" placeholder="Search key or value…" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}/></label><span>{filtered.length} results</span></div>

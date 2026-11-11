@@ -168,6 +168,14 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     await appendAudit(record, { event: 'issue-result', who: context.accountId, created, reused });
     return { created, reused, nextOffset: payload.grouped ? record.exceptions.length : offset + rows.length, savedExceptions: record.exceptions.length, totalExceptions: record.exceptionCount };
   }
+  async function annotateRun(context, payload) {
+    const record = await savedRun(context, payload.runId);
+    if (typeof payload.note !== 'string' || payload.note.length > 500) throw new Error('Run annotation must be at most 500 characters.');
+    record.note = payload.note;
+    // Annotation is audit metadata; comparison signatures and issue identities stay unchanged.
+    await appendAudit(record, { event: 'annotation', who: context.accountId, note: payload.note });
+    return { who: record.who, templateVersion: record.templateVersion, note: record.note };
+  }
   async function auditRun(context, payload) {
     const record = await savedRun(context, payload.runId);
     return { id: record.id, who: record.who, templateVersion: record.templateVersion, note: record.note, events: record.audit || [] };
@@ -188,7 +196,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     return { ...report, reused: false };
   }
   return {
-    scope, source, run, saveRun, savedRun, createIssues, reviewException, auditRun, createReport,
+    scope, source, run, saveRun, savedRun, createIssues, reviewException, auditRun, annotateRun, createReport,
     async issueTypes(context, payload) {
       await scope(context);
       if (!/^[A-Z][A-Z0-9_]*$/.test(payload.project)) throw new Error('Enter a valid target project key.');

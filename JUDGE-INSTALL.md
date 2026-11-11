@@ -7,7 +7,7 @@ Judges install Reconcile with the production sharing link below. That link insta
 ## 1. Three tables and confirmed column mapping
 
 1. In an existing synthetic Jira test issue or saved Confluence test page, attach `app/samples/ledger.csv`, `bank.xlsx` and `invoices.csv`. Open the **Reconcile** issue panel or macro.
-2. Select ledger as A and bank as B; add C and select invoices. **Load selected sources**, choose B's **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**. The files have 6 / 6 / 7 rows, with headers on source row 3.
+2. Select ledger as A and bank as B; add C and select invoices. **Load selected sources**, check B's automatically selected **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**. The files have 6 / 6 / 7 rows, with headers on source row 3.
 3. Inspect the **High / Medium / Low** mapping proposals, choose any blank or incorrect columns, then click **Confirm column mapping**. Run and Save stay disabled until mapping is complete and confirmed. Changes to rules or columns require confirmation again; an existing saved template restores its confirmed mapping.
 4. Click **Run reconciliation**. Expect **Matched 3 / Value mismatch 1 / Only in base 2 / Missing from base 2 / Duplicate keys 0**, as the panel labels them. Key 3 shows 300 versus 305 and its row reads **Δ 5**. Key 2 matches within the 0.01 tolerance, and Key 1 matches C's two rows summed. The combined residual **5.01** (5 plus the tolerated 0.01) appears only in the collapsible **Reconciliation statement & unreconciled items** section below the counts, as "Does not balance · residual 5.01".
 5. Enable **Include original table layouts** and export XLSX. Expect ten sheets and eight result keys, with the differing bank amount coloured. Save a named template if you want reviews and Rovo to reuse these mappings.
@@ -28,7 +28,7 @@ Use only an existing demo test project. Enter its project key and click **Load p
 
 Select at most 20 exception checkboxes. **Group selected exceptions** is enabled by default, matching Rovo. Click **Review issue creation**, verify selected keys/project/type/grouped mode, then explicitly **Confirm creation**. Repeat requests reuse existing matching references. Serialize requests; concurrent writes have no global atomic lock.
 
-Follow `examples/closure/README.md`: save a named template, run the initial differing data, and explicitly create the selected grouped exception. Attach/select the corrected export, reuse the same template and rerun. Once every linked key matches, Forge re-reads the authorized source and adds one evidence comment to the original issue; **Ready to close** appears. Another balanced run adds no comment. Review and close manually; the app never changes issue status. Historical references are not bulk migrated; current label-based reuse is now enrolled in tracking.
+Follow `examples/closure/README.md`: save a named template, run the initial differing data, and explicitly create the selected grouped exception. Attach/select the corrected export, reuse the same template and rerun. Once every linked key matches, Forge re-reads the authorized source and adds one evidence comment to the app-created exception issue; **Ready to close** appears. Another balanced run adds no comment. Review and close manually; the app never changes issue status. Historical references are not bulk migrated; current label-based reuse is now enrolled in tracking.
 
 ## 5. Audit trail and Confluence report
 
@@ -47,3 +47,13 @@ Ask for grouped issue creation for explicit exception IDs, project and numeric i
 The user must be able to read source files and have Create Issues permission for writes; required project fields still apply. The app uses `asUser()` and cannot exceed the user's permissions. Accept Atlassian's normal consent screen if one is shown; on the fresh-site check above none was shown.
 
 Reconciliation data stays within Atlassian and the user's browser. CSV/XLSX attachments are capped at 2 MiB each, local uploads at 8 MiB, and each sheet at 50,000 rows / 100 XLSX columns. Large results can hit bridge/runtime safeguards. Full rows stay transient; bounded metadata remains in Forge KVS. See [README.md](README.md) for exact limits, coverage and security-audit limitations.
+
+The server-verified evidence comment is added to the grouped issue created by the app (not to the issue where the panel was opened).
+
+Keys are compared case-insensitively and shown in lowercase in the panel (e.g. PAY-501 appears as pay-501).
+
+The report page is created in the same space as the target page, at the same level (not as a child page); generating again reuses the same report page.
+
+XLSX files default to the worksheet with the most parsed data rows; check the worksheet and row count before confirming the mapping. A selected sheet with at most one data row shows a warning. Mapping confirmation and reconciliation are disabled during loading; a worksheet change requires mapping confirmation again. **Reset** clears sources, worksheets, mappings and results. Restored session sources/mappings show a reminder to re-check A/B/C and worksheets, and require confirmation again. Session recovery is limited to this browser tab and excludes local uploads.
+
+Add an optional **Run annotation** before running, or edit it after completion and click **Save run annotation** to save it to that run with an audit event. Annotation changes do not change comparison evidence signatures. Save before generating a report: existing Confluence reports keep their generated snapshot when reused.

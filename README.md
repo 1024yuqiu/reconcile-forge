@@ -17,7 +17,7 @@ Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.m
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **74/74** tests, plus **5/5** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
+All cloud acceptance data was synthetic. The source test suite passes **77/77** tests, plus **5/5** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
 
 The published demo video is v13: **3:19** (198.8 seconds), 1920×1080 at 30 fps, at https://youtu.be/a5KJ6qXPxVk. It combines current production captures (the audit trail, one newly generated Confluence report and its opened link) with earlier live development captures; every scene carries an on-screen source label. The Rovo segment replays existing recorded conversations read-only; no new Rovo action was run for the recording. Decode, freeze, silence and clipping checks passed.
 
@@ -30,13 +30,14 @@ cd app
 npm ci
 npm test
 npm run test:adapter
+npm run test:d1 # with preview running
 npm run build
 npm run preview
 ```
 
 Open `http://127.0.0.1:4178/?three-tables`. The preview explicitly says **LOCAL PREVIEW · SYNTHETIC DATA**. Only mock mode replaces the Forge bridge, using the shared service/engine and local browser storage; production builds use the real bridge. Local mock issue IDs are synthetic. No Atlassian account is needed for preview.
 
-Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Select B's **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, click **Confirm column mapping**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The files and exact settings are in [app/samples](app/samples) and the synthetic [examples](examples) package, including the 5.01 residual and domestic encodings. The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
+Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Check B's automatically selected **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, click **Confirm column mapping**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The files and exact settings are in [app/samples](app/samples) and the synthetic [examples](examples) package, including the 5.01 residual and domestic encodings. The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
 
 With preview running, `npm run test:ui` runs a headless Edge check at desktop/mobile widths, including real Worker parsing, worksheet/template reload, reviews, export and local uploads. It requires an installed Microsoft Edge browser. Outputs go to ignored `app/logs/`. `npm run check:manifest` validates the local manifest; authenticated Forge lint is `npm run lint:forge`. `npm run licenses` regenerates notices and enforces the existing license allowlist. The optional historical comparison requires your separately supplied engine through `RECONCILE_REFERENCE_FILE`; that private reference is not included.
 
@@ -82,13 +83,13 @@ Stable property-order serialization binds reviews and dedupe to unchanged rules 
 
 ## Run audit and Confluence reports
 
-Each new run records the actor’s accountId, a stable content-based template version and an optional annotation. Review notes, explicit issue confirmations, creation/reuse results and report receipts are recorded as bounded audit events. The UI displays accountId rather than an email address. Audit reads are bound to the authorized source. The last 100 events per run share the 180,000-byte record budget; run actor and template version remain in the run metadata even when old events are evicted.
+Run annotations can also be edited after completion with **Save run annotation**, which appends an audit event without changing comparison signatures. Reports already generated remain snapshots. Each new run records the actor’s accountId, a stable content-based template version and an optional annotation. Review notes, explicit issue confirmations, creation/reuse results and report receipts are recorded as bounded audit events. The UI displays accountId rather than an email address. Audit reads are bound to the authorized source. The last 100 events per run share the 180,000-byte record budget; run actor and template version remain in the run metadata even when old events are evicted.
 
 Generate a report in the source Confluence page’s space, or supply an existing accessible page ID to select the intended space from Jira. The action **creates a new page** with counts, compact exception evidence, template version, annotation and audit trail. A serial retry for the same run and space reuses the report; it never updates the source page or an existing report. No global transaction lock is claimed, so serialize creation. Full source rows stay transient; retain the XLSX for complete evidence.
 
 ## Exception resolution
 
-Issues created or discovered through the current exception-label lookup are tracked by source, named template, rules and selected keys. On a rerun, Forge re-reads the authorized attachments and independently verifies that **every** linked key is now matched before adding a single evidence comment to the original issue. The UI then shows **Ready to close**. Repeated balanced runs reuse the comment receipt; missing keys and changed rules do not count as resolution. No issue transition or automatic closure is performed. Earlier references are not bulk migrated; a current JQL-label reuse explicitly enrolls that issue in closure tracking.
+Issues created or discovered through the current exception-label lookup are tracked by source, named template, rules and selected keys. On a rerun, Forge re-reads the authorized attachments and independently verifies that **every** linked key is now matched before adding a single evidence comment to the app-created exception issue. The UI then shows **Ready to close**. Repeated balanced runs reuse the comment receipt; missing keys and changed rules do not count as resolution. No issue transition or automatic closure is performed. Earlier references are not bulk migrated; a current JQL-label reuse explicitly enrolls that issue in closure tracking.
 
 The live [closure example](examples/closure) created one grouped synthetic exception, reran corrected source data, added one comment containing the verified run ID, and showed Ready to close. A repeated balanced run added no comment; the issue status ID remained unchanged.
 
@@ -151,3 +152,13 @@ Development 4.0.0 live acceptance recorded a Jira run, review and explicit group
 
 
 Earlier editorial cuts (v11, v12) were superseded by the published v13 video described above. Unaffected Confluence footage in it remains identified as development 3.8.0.
+
+The server-verified evidence comment is added to the grouped issue created by the app (not to the issue where the panel was opened).
+
+Keys are compared case-insensitively and shown in lowercase in the panel (e.g. PAY-501 appears as pay-501).
+
+The report page is created in the same space as the target page, at the same level (not as a child page); generating again reuses the same report page.
+
+XLSX files default to the worksheet with the most parsed data rows; check the worksheet and row count before confirming the mapping. A selected sheet with at most one data row shows a warning. Mapping confirmation and reconciliation are disabled during loading; a worksheet change requires mapping confirmation again. **Reset** clears sources, worksheets, mappings and results. Restored session sources/mappings show a reminder to re-check A/B/C and worksheets, and require confirmation again. Session recovery is limited to this browser tab and excludes local uploads.
+
+Add an optional **Run annotation** before running, or edit it after completion and click **Save run annotation** to save it to that run with an audit event. Annotation changes do not change comparison evidence signatures. Save before generating a report: existing Confluence reports keep their generated snapshot when reused.

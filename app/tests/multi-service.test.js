@@ -202,3 +202,24 @@ test('per-run audit retains at most 100 events while preserving actor and templa
   for(let i=0;i<51;i++)await f.service.createIssues(f.context,{runId:run.id,project:'T',issueType:'10001',selectedIds:['0'],confirmed:true,grouped:true});
   const audit=await f.service.auditRun(f.context,{runId:run.id});assert.equal(audit.events.length,100);assert.equal(audit.who,'reviewer');assert.equal(audit.templateVersion,run.auditSummary.templateVersion);assert.equal(f.created.length,1);
 });
+
+test('post-run annotation is authorized, audited and leaves comparison/issue identities unchanged', async () => {
+  const f = fixture(true), run = await f.service.run(f.context, f.payload);
+  const before = structuredClone(f.state.get(`run:${run.id}`));
+  const request = { runId: run.id, project: 'T', issueType: '10001', selectedIds: ['0'], confirmed: true, grouped: true };
+  await f.service.createIssues(f.context, request);
+  await f.service.annotateRun(f.context, { runId: run.id, note: 'Added after completion' });
+  const after = f.state.get(`run:${run.id}`);
+  assert.equal(after.note, 'Added after completion');
+  assert.equal(after.templateVersion, before.templateVersion);
+  assert.deepEqual(after.exceptions, before.exceptions);
+  assert.equal(after.audit.at(-1).event, 'annotation');
+  assert.equal(after.audit.at(-1).who, 'reviewer');
+  assert.deepEqual((await f.service.createIssues(f.context, request)).reused, ['T-2']);
+  await f.service.createReport(f.context, { runId: run.id, pageId: '42' });
+  assert.match(f.pages[0].body.value, /Added after completion/);
+  await f.service.annotateRun(f.context, { runId: run.id, note: '' });
+  assert.equal((await f.service.auditRun(f.context, { runId: run.id })).note, '');
+  await assert.rejects(f.service.annotateRun(f.context, { runId: run.id, note: 'x'.repeat(501) }), /annotation/);
+  await assert.rejects(f.service.annotateRun({ ...f.context, extension: { issue: { key: 'T-9' } } }, { runId: run.id, note: 'denied' }), /not found/);
+});
