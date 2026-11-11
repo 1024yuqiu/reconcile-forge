@@ -26,6 +26,7 @@ function App() {
   const [boot, setBoot] = useState(null), [sources, setSources] = useState([{ id: '' }, { id: '' }]), [files, setFiles] = useState([null, null]);
   const [config, setConfig] = useState(null), [result, setResult] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [filter, setFilter] = useState('all'), [search, setSearch] = useState(''), [page, setPage] = useState(0), [tab, setTab] = useState('workspace'), [templateName, setTemplateName] = useState('Monthly AP vs bank');
+  const [namedTemplate, setNamedTemplate] = useState('');
   const [project, setProject] = useState(''), [issueType, setIssueType] = useState(''), [parent, setParent] = useState(''), [grouped, setGrouped] = useState(true), [confirm, setConfirm] = useState(false), [selected, setSelected] = useState([]);
   const [hideReviewed, setHideReviewed] = useState(false), [reviewId, setReviewId] = useState(''), [reviewStatus, setReviewStatus] = useState('Explained'), [reviewNote, setReviewNote] = useState('');
   const [originalLayout, setOriginalLayout] = useState(false), [statementView, setStatementView] = useState(false);
