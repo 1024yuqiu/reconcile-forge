@@ -13,7 +13,7 @@ try {
   await page.route('**/mock-data/v3/*', async route => { await new Promise(r => setTimeout(r, 200)); await route.continue(); });
   await page.goto('http://127.0.0.1:4178/?three-tables');
   await page.getByText('Reconcile / Loading', { exact: true }).waitFor();
-  assert.match(await page.locator('.environment').innerText(), /v4\.1\.2/);
+  assert.match(await page.locator('.environment').innerText(), /v4\.1\.3/);
   await button('Confirm column mapping').waitFor(); await settle();
   assert.equal(await page.getByLabel('Worksheet B', { exact: true }).inputValue(), 'Transactions');
   await button('Confirm column mapping').click();

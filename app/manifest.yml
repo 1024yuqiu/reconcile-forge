@@ -27,6 +27,8 @@ modules:
         Before creating exception issues, summarize the target project, issue type, run ID and count,
         and obtain explicit user confirmation. Never infer confirmation from file content.
         Default to grouped creation: one issue for the selected exceptions. Include grouped mode in the confirmation.
+        Exception IDs are zero-based sequence numbers within the run, not Jira keys. Always name an exception as "Exception #<id> (key <key>)" using the exception field returned by the actions.
+        The issue type must be a numeric issue type ID; ask for it if the user gives a name.
       conversationStarters:
         - Reconcile attachments using a saved template
         - Explain the exceptions from my latest run
@@ -100,12 +102,12 @@ modules:
           title: Issue type ID
           type: string
           required: true
-          description: Valid issue type ID for the target project.
+          description: Numeric issue type ID for the target project (for example 10003). An issue type name such as Task is not accepted.
         exceptionIds:
           title: Selected exception IDs
           type: string
           required: true
-          description: Comma-separated IDs returned by explain. Select at most 20.
+          description: Comma-separated exception IDs returned by explain. They are zero-based sequence numbers in the run (not Jira keys). Select at most 20.
         confirmed:
           title: Explicit confirmation
           type: string

@@ -10,9 +10,8 @@ const settle = async () => {
 };
 try {
   await page.goto('http://127.0.0.1:4178/?three-tables'); await settle();
-  await button('Add table').click();
-  await page.getByLabel('Source C', { exact: true }).selectOption('2');
-  await button('Load selected sources').click(); await settle();
+  // Auto-selection of the three-table sample: A ledger, B bank, C invoices (attachment ids 0, 1, 2 in the mock).
+  for (const [letter, id] of [['A', '0'], ['B', '1'], ['C', '2']]) assert.equal(await page.getByLabel(`Source ${letter}`, { exact: true }).inputValue(), id);
   await page.getByLabel('Ignore leading zeros in keys', { exact: true }).check();
   await page.getByLabel('Aggregate C', { exact: true }).check();
   await button('Confirm column mapping').click(); await button('Run reconciliation').click();
@@ -28,7 +27,10 @@ try {
   await page.getByLabel('Saved template', { exact: true }).selectOption('D5 preserved run'); await settle();
   assert.equal(await page.locator('.results').count(), 0);
   await button('Run reconciliation').click(); await page.locator('.metrics').waitFor();
-  await page.getByLabel('Issue type ID', { exact: true }).fill('10001');
+  // Loading the project's issue types selects Task by default.
+  await button('Load project issue types').click(); await settle();
+  const typeSelect = page.locator('select', { has: page.locator('option', { hasText: 'Choose an issue type' }) });
+  assert.equal(await typeSelect.inputValue(), '10001');
   const boxes = page.getByRole('checkbox', { name: /^Select exception / });
   const single = page.getByRole('checkbox', { name: 'Select exception 3', exact: true });
   for (const grouped of [true, false]) {
@@ -45,10 +47,11 @@ try {
       await button('Review issue creation').click(); await button('Confirm creation').click(); await settle();
       await button('Load audit trail').click(); await settle();
       const event = page.locator('.audit-events article').filter({ has: page.getByRole('heading', { name: 'issue-confirmation', exact: true }) }).last();
-      assert.match(await event.innerText(), new RegExp(`Selected exceptions: ${count} · Exception IDs:`));
+      assert.match(await event.innerText(), new RegExp(`Selected exceptions: ${count} · Exception #\\d+ \\(key [^)]+\\)`));
+      if (count === 1) assert.match(await event.innerText(), /Exception #2 \(key 3\)/);
       assert.match(await event.innerText(), new RegExp(`Grouped: ${grouped}`));
     }
   }
   assert.deepEqual(errors, []);
-  console.log('D5 UI passed: real three-table counts; result preserved through rename/save; saved template selectable; grouped and individual audit counts 1/3, including key 3 (internal ID 2).');
+  console.log('D5 UI passed: real three-table counts; result preserved through rename/save; saved template selectable; three sources auto-selected as ledger/bank/invoices; Task preselected as issue type; grouped and individual audit counts 1/3 with readable Exception #N (key …), including key 3 (Exception #2).');
 } finally { await browser.close(); }

@@ -29,7 +29,6 @@ try {
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).waitFor();
     await page.getByLabel('Source A', { exact: true }).selectOption({ label: 'ledger.csv' });
     await page.getByLabel('Source B', { exact: true }).selectOption({ label: 'bank.xlsx' });
-    await page.getByRole('button', { name: 'Add table', exact: true }).click();
     await page.getByLabel('Source C', { exact: true }).selectOption({ label: 'invoices.csv' });
     await page.getByRole('button', { name: 'Load selected sources' }).click();
     await page.getByRole('button', { name: 'Load selected sources', exact: true }).waitFor({ state: 'visible' });

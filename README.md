@@ -1,8 +1,8 @@
-# Reconcile v4.1.2 for Jira & Confluence
+# Reconcile v4.1.3 for Jira & Confluence
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). That link installs production major version **3**, containing application package **4.1.2** (released 2026-11-11). Forge major/deployment numbers and the application package version are independent. The current panel header is **ATLASSIAN FORGE · v4.1.2**. Both existing production installations were checked on major 3, Up-to-date. A brand-new account and site installed it through the sharing link on 2026-11-11: no extra consent page or error; the three-table sample returned 3 / 1 / 2 / 2 / 0. This repository is MIT licensed.
+Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). That link installs production major version **3**, containing application package **4.1.3** (released 2026-11-11). Forge major/deployment numbers and the application package version are independent. The current panel header is **ATLASSIAN FORGE · v4.1.3**. Both existing production installations were checked on major 3, Up-to-date. A brand-new account and site installed it through the sharing link on 2026-11-11: no extra consent page or error; the three-table sample returned 3 / 1 / 2 / 2 / 0. This repository is MIT licensed.
 
 ## Features
 
@@ -17,7 +17,7 @@ Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.m
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **82/82** tests, plus **5/5** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
+All cloud acceptance data was synthetic. The source test suite passes **96/96** tests, plus **6/6** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
 
 The published demo video is v13: **3:19** (198.8 seconds), 1920×1080 at 30 fps, at https://youtu.be/a5KJ6qXPxVk. It combines current production captures (the audit trail, one newly generated Confluence report and its opened link) with earlier live development captures; every scene carries an on-screen source label. The Rovo segment replays existing recorded conversations read-only; no new Rovo action was run for the recording. Decode, freeze, silence and clipping checks passed.
 
@@ -97,7 +97,9 @@ The live [closure example](examples/closure) created one grouped synthetic excep
 
 ## Rovo saved-template runs
 
-Choose **Reconciliation Assistant** on a Rovo-enabled site. You must provide the source Jira issue key, attachment IDs and exact saved project template name. The agent does not support listing saved templates; open the Reconcile panel on an issue in that project to view or save a named template.
+**Open the source issue page (for example KAN-5) in the browser and keep it open before you ask Rovo anything.** Without it, fetching exception details fails with a system error.
+
+The Reconciliation Assistant does not show up when you search the **Change agent** list. In the Rovo input box type **@Reconciliation Assistant** and select it. You must provide the source Jira issue key, attachment IDs and exact saved project template name. The agent does not support listing saved templates; open the Reconcile panel on an issue in that project to view or save a named template.
 
 The run action inputs are `issueKey`, `attachmentIds` (a comma-separated string of 2–5 numeric IDs in saved-template table order) and `template` (the exact, case-sensitive saved name). Spaces around comma-separated IDs are trimmed. For two tables, `attachmentA` and `attachmentB` are supported instead; a nonempty `attachmentIds` overrides them. Use the number of attachments required by the template. All attachments must belong to the source issue.
 
@@ -109,7 +111,19 @@ Copy this prompt, replacing `<id1>`, `<id2>` and `<id3>` with the IDs for closur
 Run reconciliation on KAN-5 with attachment IDs <id1>,<id2>,<id3> using template closure-test.
 ```
 
-Rovo's **Only in A** means **Only in base**, **Only in B** means **Missing from base**, and **Mismatch** means **Value mismatch** in the panel. The run action returns summary counts and a run ID, without exception explanations. While the source issue remains open, ask **Explain the exceptions for run <runId>**, replacing the placeholder with the returned ID. The explain action requires that ID and returns up to ten stored exceptions; it describes observed differences, not inferred causes. For creation, check **Mode: Grouped** in the confirmation (one issue for the selected exception when selecting one).
+Rovo's **Only in A** means **Only in base**, **Only in B** means **Missing from base**, and **Mismatch** means **Value mismatch** in the panel. The run action returns summary counts and a run ID, without exception explanations. With the source issue still open, ask **Explain the exceptions for run <runId>**, replacing the placeholder with the returned ID. The explain action requires that ID and returns up to ten stored exceptions; it describes observed differences, not inferred causes. Each exception is named **Exception #<ID> (key <key>)**. The **Exception ID is a sequence number counted from 0** in the run's result list, not the Jira key (`close-501` can be Exception #0).
+
+For creation, the **issue type must be a numeric ID**; a name such as Task fails with "invalid project key or issue type ID". Example:
+
+```text
+Create one grouped issue for exception 0 from run <runId> in project KAN with numeric issue type ID 10003.
+```
+
+The numeric ID appears as the **Type** value in the panel's audit trail after a creation through the panel, or can be looked up in Jira's issue type settings. Rovo then shows a **Please review** card with **Grouped: true**, **Confirmed: true**, **Exception IDs**, **Run ID** and **Issue Type**. Check **Grouped: true** and click **Confirm selected**; the result text contains **Mode: Grouped**. Asking again for the same evidence gives **Reused Issue: <the same issue key>** and creates nothing. If a grouped issue already exists for the same evidence, even the first request reuses it; to see a first-time creation, choose an exception that has no issue yet, or test on a new source issue.
+
+## Source selection and issue types in the panel
+
+Attachments are auto-selected only when they can be told apart reliably: exactly the three roles ledger, bank and invoices (recognized from the file name) become **A = ledger, B = bank, C = invoices** in any upload order, and two attachments are both selected. Otherwise nothing is selected and the panel asks you to choose A / B / C manually, with ledger as A for the three-table sample. The sample needs **Ignore leading zeros in keys** and **Aggregate C**; **Matched 0 usually means Ignore leading zeros in keys was not ticked.** After **Load project issue types**, the **Type** dropdown preselects the type named Task (usually keep Task) and stays empty with a notice when the project has none. The audit trail shows selected exceptions as **Exception #<ID> (key <key>)**.
 
 ## Confirm column mapping
 
@@ -166,7 +180,7 @@ Development 3.9.0 repeated the Jira counts and fixed unstable property-order ser
 
 On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. After explicit confirmation, Rovo created one Jira issue for a single selected exception; a repeated request reused that same issue with zero new issues. On development 3.10.0, Rovo explicitly confirmed Mode: Grouped for two selected exceptions, created one grouped test issue, then reused it with zero new issues on a second explicitly confirmed request.
 
-Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded during that historical development acceptance; the current production package is 4.1.2 as described above.
+Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded during that historical development acceptance; the current production package is 4.1.3 as described above.
 
 
 Earlier editorial cuts (v11, v12) were superseded by the published v13 video described above. Unaffected Confluence footage in it remains identified as development 3.8.0.
@@ -177,6 +191,6 @@ Keys are compared case-insensitively and shown in lowercase in the panel (e.g. P
 
 The report page is created in the same space as the target page, at the same level (not as a child page); generating again reuses the same report page.
 
-XLSX files default to the worksheet with the most parsed data rows; check the worksheet and row count before confirming the mapping. A selected sheet with at most one data row shows a warning. Mapping confirmation and reconciliation are disabled during loading; a worksheet change requires mapping confirmation again. **Reset** clears sources, worksheets, mappings and results. Restored session sources/mappings show “Restored from your last session. Please re-check sources and worksheets, or click Reset.” near **Load selected sources**, and require confirmation again. Automatically selected issue attachments show “Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset.” in the same position. **Reset** or **Load selected sources** dismisses either reminder. Session recovery is limited to this browser tab and excludes local uploads.
+XLSX files default to the worksheet with the most parsed data rows; check the worksheet and row count before confirming the mapping. A selected sheet with at most one data row shows a warning. Mapping confirmation and reconciliation are disabled during loading; a worksheet change requires mapping confirmation again. **Reset** clears sources, worksheets, mappings and results. Restored session sources/mappings show “Restored from your last session. Please re-check sources and worksheets, or click Reset.” near **Load selected sources**, and require confirmation again. Automatically selected issue attachments show “Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset.” in the same position. When the attachments cannot be told apart reliably, nothing is selected and the same position shows “This issue has N attachments, so sources were not auto-selected. Choose A / B / C manually (for the three-table sample: ledger as A), then click Load selected sources.” **Reset** or **Load selected sources** dismisses any of these reminders. Session recovery is limited to this browser tab and excludes local uploads.
 
 Add an optional **Run annotation** before running, or edit it after completion and click **Save run annotation** to save it to that run with an audit event. Annotation changes do not change comparison evidence signatures. Save before generating a report: existing Confluence reports keep their generated snapshot when reused.

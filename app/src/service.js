@@ -1,5 +1,6 @@
 import { reconcile } from './reconcile.js';
 import { reconcileTables, exceptionSignature, stableStringify } from './multi.js';
+import { exceptionText } from './defaults.js';
 export const MAX_SAVED_EXCEPTIONS = 200;
 
 export function createService({ store, jira, confluence, loadAttachment, uuid, digest, now }) {
@@ -140,7 +141,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
       if (selected.some(r => !r)) throw new Error('Selected exception is not in this run.');
       if (payload.confirmed !== true) throw new Error('Explicit confirmation is required for selected exceptions.');
     }
-    await appendAudit(record, { event: 'issue-confirmation', who: context.accountId, confirmed: payload.confirmed === true, project: payload.project, issueType: payload.issueType, grouped: Boolean(payload.grouped), selectedIds: selected.map(r => r.id) });
+    await appendAudit(record, { event: 'issue-confirmation', who: context.accountId, confirmed: payload.confirmed === true, project: payload.project, issueType: payload.issueType, grouped: Boolean(payload.grouped), selectedIds: selected.map(r => r.id), selected: selected.map(r => ({ id: r.id, key: r.label })) });
     const rows = payload.grouped ? [{ key: 'grouped', label: `${payload.selectedIds ? selected.length : record.exceptionCount} exceptions`, status: 'grouped', diffs: stableStringify((payload.selectedIds ? selected : record.exceptions).map(({ review, ...row }) => row)).slice(0, 12000) }] : selected;
     const created = [], reused = [];
     for (const row of rows) {
@@ -166,7 +167,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
       created.push(issue.key);
     }
     await appendAudit(record, { event: 'issue-result', who: context.accountId, created, reused });
-    return { created, reused, nextOffset: payload.grouped ? record.exceptions.length : offset + rows.length, savedExceptions: record.exceptions.length, totalExceptions: record.exceptionCount };
+    return { created, reused, nextOffset: payload.grouped ? record.exceptions.length : offset + rows.length, savedExceptions: record.exceptions.length, totalExceptions: record.exceptionCount, selectedExceptions: selected.map(r => ({ id: r.id, key: r.label, text: exceptionText({ id: r.id, label: r.label }) })) };
   }
   async function annotateRun(context, payload) {
     const record = await savedRun(context, payload.runId);

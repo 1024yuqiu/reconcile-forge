@@ -115,7 +115,7 @@ for (const grouped of [true, false]) test(`template reload reuses unchanged ${gr
   assert.deepEqual((await f.service.createIssues(f.context, { ...request, runId: first.id })).created, ['T-2']);
   const next = await workerSave(f, await reload(f));
   const response = await f.service.createIssues(f.context, { ...request, runId: next.id });
-  assert.deepEqual(response, { created: [], reused: ['T-2'], nextOffset: 1, savedExceptions: 1, totalExceptions: 1 });
+  assert.deepEqual(response, { created: [], reused: ['T-2'], nextOffset: 1, savedExceptions: 1, totalExceptions: 1, selectedExceptions: [{ id: '0', key: '1', text: 'Exception #0 (key 1)' }] });
   assert.equal(f.created.length, 1);
 });
 for (const change of ['amount', 'row', 'rule']) test(`template reload rejects old issue and review when ${change} evidence changes`, async () => {
@@ -235,4 +235,28 @@ for (const grouped of [false, true]) for (const count of [1, 3]) test(`audit sto
   assert.deepEqual(event.selectedIds, selectedIds);
   assert.equal(event.selectedIds.length, count);
   assert.equal(f.created.length, grouped ? 1 : count);
+});
+
+test('audit and result name each selected exception by sequence number and key; old audit events without keys stay readable', async () => {
+  const f = fixture(), run = await f.service.run(f.context, f.payload);
+  const row = run.results[0];
+  assert.equal(row.id, '0');
+  assert.equal(row.label, '1');
+  const response = await f.service.createIssues(f.context, { runId: run.id, project: 'T', issueType: '10001', selectedIds: [row.id], grouped: true, confirmed: true });
+  assert.deepEqual(response.selectedExceptions, [{ id: '0', key: row.label, text: `Exception #0 (key ${row.label})` }]);
+  const event = (await f.service.auditRun(f.context, { runId: run.id })).events.find(e => e.event === 'issue-confirmation');
+  assert.deepEqual(event.selectedIds, ['0']);
+  assert.deepEqual(event.selected, [{ id: '0', key: row.label }]);
+  assert.match(JSON.stringify(event.selected), new RegExp(`"key":"${row.label}"`));
+});
+test('exception ID is the position in the full result list, so a later exception has a nonzero ID next to its key', async () => {
+  const f = fixture();
+  for (const file of f.files) file.rows = [{ ...file.rows[0], 'Order ID': 'close-500', Amount: '100' }, { ...file.rows[0], 'Order ID': 'close-501' }];
+  f.files[1].rows[0].Amount = '100'; f.files[2].rows[0].Amount = '100';
+  const run = await f.service.run(f.context, f.payload);
+  const target = run.results.find(r => r.label === 'close-501');
+  assert.notEqual(target.status, 'matched');
+  assert.equal(target.id, String(run.results.indexOf(target)));
+  const response = await f.service.createIssues(f.context, { runId: run.id, project: 'T', issueType: '10001', selectedIds: [target.id], grouped: true, confirmed: true });
+  assert.equal(response.selectedExceptions[0].text, `Exception #${target.id} (key close-501)`);
 });

@@ -4,6 +4,7 @@ import { kvs } from '@forge/kvs';
 import { randomUUID, createHash } from 'node:crypto';
 import { createService } from './service.js';
 import { readBytes } from './files.js';
+import { exceptionText } from './defaults.js';
 
 async function json(response) {
   if (!response.ok) throw new Error(`Atlassian request failed (${response.status}). Check permissions, project fields and retry.`);
@@ -100,10 +101,15 @@ function rovoContext(payload, context) {
 }
 export async function rovoExplain(payload, context) {
   const run = await service.savedRun(rovoContext(payload, context), payload.runId);
-  return { runId: run.id, summary: run.summary, examples: run.exceptions.slice(0, 10), note: 'Observed differences only; causes require human investigation.' };
+  return { runId: run.id, summary: run.summary, examples: run.exceptions.slice(0, 10).map(e => ({ ...e, exception: exceptionText(e) })), note: 'Observed differences only; causes require human investigation. Exception IDs are zero-based sequence numbers in the run; refer to each exception as shown in its exception field.' };
 }
 export const rovoCreate = (payload, context) => {
   if (String(payload.confirmed).toLowerCase() !== 'true' || !payload.exceptionIds) throw new Error('Explicit confirmation and selected exception IDs are required.');
   if (payload.grouped !== undefined && !['true', 'false'].includes(String(payload.grouped).toLowerCase())) throw new Error('Grouped mode must be true or false.');
-  return service.createIssues(rovoContext(payload, context), { ...payload, grouped: String(payload.grouped ?? 'true').toLowerCase() === 'true', selectedIds: payload.exceptionIds.split(',').map(v => v.trim()), confirmed: true });
+  const grouped = String(payload.grouped ?? 'true').toLowerCase() === 'true';
+  return service.createIssues(rovoContext(payload, context), { ...payload, grouped, selectedIds: payload.exceptionIds.split(',').map(v => v.trim()), confirmed: true }).then(response => {
+    const mode = grouped ? 'Grouped' : 'Individual', exceptions = response.selectedExceptions.map(e => e.text);
+    const message = [`Mode: ${mode}`, `Exceptions: ${exceptions.join('; ')}`, ...response.created.map(key => `Created Issue: ${key}`), ...response.reused.map(key => `Reused Issue: ${key}`)].join('. ');
+    return { ...response, mode, exceptions, message };
+  });
 };
