@@ -223,3 +223,16 @@ test('post-run annotation is authorized, audited and leaves comparison/issue ide
   await assert.rejects(f.service.annotateRun(f.context, { runId: run.id, note: 'x'.repeat(501) }), /annotation/);
   await assert.rejects(f.service.annotateRun({ ...f.context, extension: { issue: { key: 'T-9' } } }, { runId: run.id, note: 'denied' }), /not found/);
 });
+
+for (const grouped of [false, true]) for (const count of [1, 3]) test(`audit stores exactly ${count} selected exceptions (grouped=${grouped})`, async () => {
+  const f = fixture();
+  for (const file of f.files) file.rows = ['1', '2', '3'].map(key => ({ ...file.rows[0], 'Order ID': key }));
+  const run = await f.service.run(f.context, f.payload);
+  const selectedIds = run.results.filter(r => r.status !== 'matched').slice(-count).map(r => r.id);
+  assert.equal(selectedIds.length, count);
+  await f.service.createIssues(f.context, { runId: run.id, project: 'T', issueType: '10001', selectedIds, grouped, confirmed: true });
+  const event = (await f.service.auditRun(f.context, { runId: run.id })).events.find(e => e.event === 'issue-confirmation');
+  assert.deepEqual(event.selectedIds, selectedIds);
+  assert.equal(event.selectedIds.length, count);
+  assert.equal(f.created.length, grouped ? 1 : count);
+});

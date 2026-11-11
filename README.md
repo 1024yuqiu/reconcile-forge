@@ -1,8 +1,8 @@
-# Reconcile v4 for Jira & Confluence
+# Reconcile v4.1.2 for Jira & Confluence
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). That link installs the latest production major version, **3** (deployed 2026-11-10), which contains application package **4.0.0**. Forge major/deployment numbers (deployment 3.3.0) and the application package version are independent. `forge version list -e production` shows major 3 as the newest production version, and `forge install list` shows the existing production installation on major 3, Up-to-date. A brand-new account and site installed it through the sharing link on 2026-11-11: no extra consent page, no error, panel header **v4**, and the three-table sample returned 3 / 1 / 2 / 2 / 0. This repository is MIT licensed.
+Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). That link installs production major version **3**, containing application package **4.1.2** (released 2026-11-11). Forge major/deployment numbers and the application package version are independent. The current panel header is **ATLASSIAN FORGE · v4.1.2**. Both existing production installations were checked on major 3, Up-to-date. A brand-new account and site installed it through the sharing link on 2026-11-11: no extra consent page or error; the three-table sample returned 3 / 1 / 2 / 2 / 0. This repository is MIT licensed.
 
 ## Features
 
@@ -17,7 +17,7 @@ Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.m
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **77/77** tests, plus **5/5** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
+All cloud acceptance data was synthetic. The source test suite passes **82/82** tests, plus **5/5** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
 
 The published demo video is v13: **3:19** (198.8 seconds), 1920×1080 at 30 fps, at https://youtu.be/a5KJ6qXPxVk. It combines current production captures (the audit trail, one newly generated Confluence report and its opened link) with earlier live development captures; every scene carries an on-screen source label. The Rovo segment replays existing recorded conversations read-only; no new Rovo action was run for the recording. Decode, freeze, silence and clipping checks passed.
 
@@ -37,7 +37,7 @@ npm run preview
 
 Open `http://127.0.0.1:4178/?three-tables`. The preview explicitly says **LOCAL PREVIEW · SYNTHETIC DATA**. Only mock mode replaces the Forge bridge, using the shared service/engine and local browser storage; production builds use the real bridge. Local mock issue IDs are synthetic. No Atlassian account is needed for preview.
 
-Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Check B's automatically selected **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, click **Confirm column mapping**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The files and exact settings are in [app/samples](app/samples) and the synthetic [examples](examples) package, including the 5.01 residual and domestic encodings. The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
+Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Check B's automatically selected **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, click **Confirm column mapping**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The judge files and exact settings are in [examples/three-tables](examples/three-tables) and the synthetic [examples](examples) package, including the 5.01 residual and domestic encodings. The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
 
 With preview running, `npm run test:ui` runs a headless Edge check at desktop/mobile widths, including real Worker parsing, worksheet/template reload, reviews, export and local uploads. It requires an installed Microsoft Edge browser. Outputs go to ignored `app/logs/`. `npm run check:manifest` validates the local manifest; authenticated Forge lint is `npm run lint:forge`. `npm run licenses` regenerates notices and enforces the existing license allowlist. The optional historical comparison requires your separately supplied engine through `RECONCILE_REFERENCE_FILE`; that private reference is not included.
 
@@ -109,6 +109,8 @@ Copy this prompt, replacing `<id1>`, `<id2>` and `<id3>` with the IDs for closur
 Run reconciliation on KAN-5 with attachment IDs <id1>,<id2>,<id3> using template closure-test.
 ```
 
+Rovo's **Only in A** means **Only in base**, **Only in B** means **Missing from base**, and **Mismatch** means **Value mismatch** in the panel. The run action returns summary counts and a run ID, without exception explanations. While the source issue remains open, ask **Explain the exceptions for run <runId>**, replacing the placeholder with the returned ID. The explain action requires that ID and returns up to ten stored exceptions; it describes observed differences, not inferred causes. For creation, check **Mode: Grouped** in the confirmation (one issue for the selected exception when selecting one).
+
 ## Confirm column mapping
 
 Column-name similarity and up to 20 sample values per column produce **High / Medium / Low** proposals. Low or ambiguous candidates remain blank. A person must choose missing columns and click **Confirm column mapping** before running or saving a new template. Selecting an existing saved template explicitly restores its previously confirmed mapping. Changing columns or rules requires confirmation again. Confidence describes the proposal, not the correctness of the source data.
@@ -162,9 +164,9 @@ On development 3.8.0, real Jira and Confluence UI runs compared three attached f
 
 Development 3.9.0 repeated the Jira counts and fixed unstable property-order serialization in evidence identities. One explicit grouped confirmation created one test issue for selected keys 3 and 4. After a full page refresh, saved-template reload and identical rerun, the next confirmation reused that issue with no new issue. Both Explained and Ignored reviews and their notes returned; hiding reviewed exceptions reduced eight displayed rows to six. Changed amounts, row counts and rules invalidate old reviews and prevent issue reuse in local service tests. Old-version records were not migrated or claimed as migrated.
 
-On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. After explicit confirmation, Rovo created one Jira issue for a single selected exception; a repeated request reused that same issue with zero new issues. On development 3.10.0, Rovo explicitly confirmed grouped=true for two selected exceptions, created one grouped test issue, then reused it with zero new issues on a second explicitly confirmed request.
+On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. After explicit confirmation, Rovo created one Jira issue for a single selected exception; a repeated request reused that same issue with zero new issues. On development 3.10.0, Rovo explicitly confirmed Mode: Grouped for two selected exceptions, created one grouped test issue, then reused it with zero new issues on a second explicitly confirmed request.
 
-Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded during that development acceptance; application package 4.0.0 was subsequently deployed to production as described above.
+Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded during that historical development acceptance; the current production package is 4.1.2 as described above.
 
 
 Earlier editorial cuts (v11, v12) were superseded by the published v13 video described above. Unaffected Confluence footage in it remains identified as development 3.8.0.
