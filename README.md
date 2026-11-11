@@ -19,7 +19,7 @@ Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.m
 
 All cloud acceptance data was synthetic. The source test suite passes **136/136** tests, plus **6/6** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
 
-The published demo video is v13: **3:19** (198.8 seconds), 1920×1080 at 30 fps, at https://youtu.be/a5KJ6qXPxVk. It combines current production captures (the audit trail, one newly generated Confluence report and its opened link) with earlier live development captures; every scene carries an on-screen source label. The Rovo segment replays existing recorded conversations read-only; no new Rovo action was run for the recording. Decode, freeze, silence and clipping checks passed.
+The published demo video is v14: **3:28** (208.5 seconds), 1920×1080 at 30 fps, at https://youtu.be/dBggPDcc7wk. Its new scenes are production 4.1.6 captures (panel header v4.1.6, automatic A/B/C source selection, confirmed mapping and the 3 / 1 / 2 / 2 / 0 counts, the saved template name in a new Confluence report, the browser-refresh restored result, and a grouped issue with a readable description); they are real screenshots shown as short zoomed montages, not continuous interaction footage. Other scenes are kept from v13 (earlier live development captures), and every scene carries an on-screen source label. The Rovo segment replays existing recorded conversations read-only; no new Rovo action was run for the recording. The brief "Identifying attachments…" message was observed in production but is not shown. Decode, freeze, silence and clipping checks passed.
 
 ## Run locally
 
@@ -183,7 +183,7 @@ On a free Forge demo development site, the real Rovo agent ran a saved three-tab
 Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded during that historical development acceptance; the production package recorded at that time was 4.1.3, as described above.
 
 
-Earlier editorial cuts (v11, v12) were superseded by the published v13 video described above. Unaffected Confluence footage in it remains identified as development 3.8.0.
+Earlier editorial cuts (v11, v12, v13) were superseded by the published v14 video described above. Unaffected Confluence footage in it remains identified as development 3.8.0.
 
 The server-verified evidence comment is added to the grouped issue created by the app (not to the issue where the panel was opened).
 
