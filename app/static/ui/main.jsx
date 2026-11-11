@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { invoke, view, router } from '@forge/bridge';
 import { DEFAULT_RULES, STATUSES } from '../../src/reconcile.js';
 import { mappingSuggestions, compactResult, PASSES } from '../../src/multi.js';
-import { ATTACHMENTS_CHANGED, attachmentSnapshot, recordedTemplateName, auditSelectionText, confirmCreateText, defaultIssueType, exceptionText, issueResultText, manualHint, OPTIONS_RECHECK, planStart, restoreSession, sessionRecord } from '../../src/defaults.js';
+import { ATTACHMENTS_CHANGED, RESTORED_RESULT_NOTICE, attachmentSnapshot, recordedTemplateName, shouldAutoRun, auditSelectionText, confirmCreateText, defaultIssueType, exceptionText, issueResultText, manualHint, OPTIONS_RECHECK, planStart, restoreSession, sessionRecord } from '../../src/defaults.js';
 import './style.css';
 import { latestPreview } from './preview-state.js';
 import { version } from '../../package.json';
@@ -67,6 +67,13 @@ function App() {
         // Put back the mapping, the two option checkboxes and the confirmed state, so Run works right after a refresh.
         const back = restoreSession(previous, loaded, initialConfig(loaded));
         if (back.config) { setNamedTemplate(recordedTemplateName(previous?.namedTemplate)); setConfig(back.config); setMappingConfirmed(back.mappingConfirmed); setOptionsReset(back.optionsReset); }
+        // Mapping confirmed and nothing changed since: show the result again without a click. Computed only, nothing is saved.
+        if (shouldAutoRun(plan, back, loaded)) {
+          try {
+            const output = await workerTask({ operation: 'run', files: loaded, config: back.config });
+            setResult(output); setAudit(null); setReport(null); setSelected([]); setConfirm(false); setReviewId(''); setFilter('all'); setPage(0); setNotice(RESTORED_RESULT_NOTICE);
+          } catch { /* leave the panel as it was: the user can still click Run */ }
+        }
       }
     } else setRestored(plan.mode === 'manual' ? 'manual' : '');
   }

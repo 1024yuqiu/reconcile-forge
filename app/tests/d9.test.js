@@ -5,7 +5,8 @@ import { createService } from '../src/service.js';
 import { suggestFields } from '../src/multi.js';
 import { DEFAULT_RULES } from '../src/reconcile.js';
 import { adfText, issueDescription, UNSAVED_TEMPLATE } from '../src/describe.js';
-import { recordedTemplateName, sessionRecord } from '../src/defaults.js';
+import { recordedTemplateName, sessionRecord, restoreSession, planStart, shouldAutoRun, RESTORED_RESULT_NOTICE } from '../src/defaults.js';
+import { reconcileTables } from '../src/multi.js';
 
 // 4.1.6 item 1: the template name box defaults to "Monthly AP vs bank"; only a saved or loaded template is recorded.
 const DEFAULT_BOX = 'Monthly AP vs bank';
@@ -74,4 +75,40 @@ test('describe helper: empty, missing or whitespace names are unsaved; old recor
 test('session record keeps the saved/loaded template name, and defaults to none', () => {
   assert.equal(sessionRecord({ sources: [], config: null, mappingConfirmed: false, attachments: [], namedTemplate: 'Q4 close' }).namedTemplate, 'Q4 close');
   assert.equal(sessionRecord({ sources: [], config: null, mappingConfirmed: false, attachments: [] }).namedTemplate, '');
+});
+
+// 4.1.6 item 2: after a refresh the result is recalculated by itself, but only for a confirmed, unchanged, fully restored session.
+const att = [['ledger.csv', 0], ['bank.csv', 1], ['invoices.csv', 2]].map(([name, id]) => ({ id: String(id), name }));
+const tables = () => ['300', '305', '300'].map((Amount, i) => ({ name: att[i].name, headers: ['Order ID', 'Amount'], rows: [{ 'Order ID': '1', Amount }, { 'Order ID': '2', Amount: '100' }] }));
+const base = files => ({ ...suggestFields(files), baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: false }, aggregate: files.map(() => false), acceptedPairs: [] });
+const stored = (config, mappingConfirmed, attachments = att) => JSON.parse(JSON.stringify(sessionRecord({ sources: att.map(a => ({ id: a.id })), config, mappingConfirmed, attachments })));
+const decide = (previous, files, attachments = att) => {
+  const plan = planStart(attachments, previous), back = restoreSession(previous, files, base(files));
+  return { plan, back, auto: shouldAutoRun(plan, back, files) };
+};
+
+test('auto-run: confirmed mapping + unchanged attachments -> run, and counts equal those before the refresh', () => {
+  const files = tables(), config = { ...base(files), keyRules: { ...DEFAULT_RULES, leadingZeros: true }, aggregate: [false, false, true] };
+  const before = reconcileTables(files, config).summary;
+  const { plan, back, auto } = decide(stored(config, true), files);
+  assert.equal(plan.mode, 'session'); assert.equal(auto, true);
+  assert.deepEqual(reconcileTables(files, back.config).summary, before);
+});
+test('auto-run: unconfirmed mapping, older session, changed attachments, other sessions and missing data do not auto-run', () => {
+  const files = tables(), config = base(files);
+  assert.equal(decide(stored(config, false), files).auto, false); // not confirmed
+  const old = stored(config, true); delete old.options; delete old.mappingConfirmed;
+  assert.equal(decide(old, files).auto, false); // 4.1.4 shape: checkboxes reset, never confirmed
+  const added = [...att, { id: '9', name: 'extra.csv' }];
+  const changed = decide(stored(config, true), files, added);
+  assert.equal(changed.plan.mode === 'session', false); assert.equal(changed.auto, false); // attachments changed
+  assert.equal(decide(null, files).auto, false); // no saved session
+  const noRows = files.map((f, i) => i === 1 ? { ...f, rows: [] } : f);
+  assert.equal(decide(stored(config, true), noRows).auto, false); // a table has no data rows
+  const renamed = files.map(f => ({ ...f, headers: f.headers.map(h => h + 'x') }));
+  assert.equal(decide(stored(config, true), renamed).auto, false); // saved mapping no longer fits
+  assert.equal(shouldAutoRun(undefined, undefined, files), false);
+});
+test('auto-run notice tells the user the result was not saved and how to save a run', () => {
+  assert.match(RESTORED_RESULT_NOTICE, /No new run was saved/); assert.match(RESTORED_RESULT_NOTICE, /Click Run reconciliation/);
 });

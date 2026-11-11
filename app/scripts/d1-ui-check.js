@@ -40,8 +40,13 @@ try {
   await page.getByText('Restored from your last session. Please re-check sources and worksheets, or click Reset.', { exact: true }).waitFor();
   // 4.1.5: the confirmed mapping is restored with the session, so Run is available without re-confirming.
   assert.equal(await button('Run reconciliation').isDisabled(), false);
+  // 4.1.6: a confirmed, unchanged session shows the result again by itself (display only: no new run record, so no audit / report card).
+  await page.locator('.metrics').waitFor();
+  await page.getByText(/shown for review only\. No new run was saved/).waitFor();
+  assert.equal(await page.getByLabel('Run audit and report').count(), 0);
   // Reset behaves like a first open: attachments are identified again, so the three sample files give A / B / C and three cards.
   await button('Reset').click(); await settle();
+  assert.equal(await page.locator('.metrics').count(), 0); // Reset clears the restored result
   for (const [letter, id] of [['A', '0'], ['B', '1'], ['C', '2']]) assert.equal(await page.getByLabel(`Source ${letter}`, { exact: true }).inputValue(), id);
   assert.equal(await page.locator('.card.source').count(), 3);
   await page.getByText("Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset.", { exact: true }).waitFor();

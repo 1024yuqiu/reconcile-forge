@@ -115,6 +115,16 @@ export function sessionRecord({ sources, config, mappingConfirmed, attachments, 
 }
 export const OPTIONS_RECHECK = 'This older session did not store the checkboxes, so "Ignore leading zeros in keys" and "Aggregate" were reset. Please re-check them.';
 
+// After a refresh the panel recomputes and shows the result by itself, but only when the restore is complete and trustworthy:
+// the saved session still matches the attachments (plan.mode 'session', not changed), the saved config fits the files, its
+// column mapping was confirmed, it is not an older session whose checkboxes were reset, and every table has data rows.
+// The result is computed for display only: no run record, audit event or history entry is written (that needs a click on Run).
+export function shouldAutoRun(plan, back, files) {
+  return Boolean(plan && plan.mode === 'session' && !plan.changed && back && back.config && back.mappingConfirmed === true && !back.optionsReset
+    && Array.isArray(files) && files.length >= 2 && files.every(f => f && Array.isArray(f.rows) && f.rows.length > 0));
+}
+export const RESTORED_RESULT_NOTICE = 'Results were recalculated from your restored session and shown for review only. No new run was saved. Click Run reconciliation to save a run record (needed to create Jira issues, audit trail or report).';
+
 // A saved config is reused only when it still fits the loaded tables: same table count, and every mapped column exists.
 function fits(config, files) {
   if (!config || !Array.isArray(files) || files.some(f => !f)) return false;
