@@ -2,7 +2,7 @@
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Development **4.0.0** adds bounded amount combinations, domestic parsing, confirmed mapping suggestions, exception-resolution comments, audit trails and Confluence reports. Production remains **2.1.0** with the previously published source; this update has only been deployed to development. Forge versions are numbered independently per environment. Both Jira and Confluence are connected to the existing production installation. Forge reports Runs on Atlassian eligibility. Production distribution sharing is enabled; use the existing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository is MIT licensed; publishing source does not submit a Devpost entry or upload a video.
+Judges install Reconcile **4.x** through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). Application package **4.0.0** is deployed to production (Forge deployment **3.3.0**); application versions and Forge environment deployment numbers are independent. Existing production installation is upgraded; the sharing-installation UI check remains pending. This repository is MIT licensed.
 
 ## Features
 
@@ -17,17 +17,9 @@ Development **4.0.0** adds bounded amount combinations, domestic parsing, confir
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **70/70** tests, plus **4/4** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
+All cloud acceptance data was synthetic. The source test suite passes **74/74** tests, plus **5/5** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
 
-Production 2.1.0 passed a read-only Jira smoke check on an existing synthetic test issue: the three attachments returned **3 / 1 / 2 / 2 / 0**, the checked source issue fields remained unchanged, and no issue was created. The existing sharing link still displays the app, both products and the expected scopes. Production Confluence macro rendering remains unverified: the existing synthetic page contains only a development macro, and no page was changed during the read-only production check. Its successful development coverage below is separate.
-
-On development 3.8.0, real Jira and Confluence UI runs compared three attached files containing **6 / 6 / 7** data rows. Both returned **3 matched / 1 mismatch / 2 only in reference / 2 missing from reference / 0 duplicates**. Actual downloaded workbooks were checked for ten worksheets, eight result keys and the differing amount cell's colour.
-
-Development 3.9.0 repeated the Jira counts and fixed unstable property-order serialization in evidence identities. One explicit grouped confirmation created one test issue for selected keys 3 and 4. After a full page refresh, saved-template reload and identical rerun, the next confirmation reused that issue with no new issue. Both Explained and Ignored reviews and their notes returned; hiding reviewed exceptions reduced eight displayed rows to six. Changed amounts, row counts and rules invalidate old reviews and prevent issue reuse in local service tests. Old-version records were not migrated or claimed as migrated.
-
-On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. After explicit confirmation, Rovo created one Jira issue for a single selected exception; a repeated request reused that same issue with zero new issues. On development 3.10.0, Rovo explicitly confirmed grouped=true for two selected exceptions, created one grouped test issue, then reused it with zero new issues on a second explicitly confirmed request.
-
-The demo video uses real headless cloud captures with synthetic inputs. The locally prepared English v11 demo is 172.8 seconds, 1920×1080 at 30 fps; its audio/video decode, freeze, silence and clipping checks passed. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the v11 demo includes the real Rovo grouped create-then-reuse recording and phase 14 feature captures. Unaffected Confluence footage remains identified as development 3.8.0.
+The phase 15 English v12 editorial cut is 173.6 seconds and uses verified earlier live development footage. Clean captures of the changed UI and the sharing-installation check remain pending because browser control was unavailable. This cut remains provisional until those checks and new live captures are completed.
 
 ## Run locally
 
@@ -42,9 +34,9 @@ npm run build
 npm run preview
 ```
 
-Open `http://127.0.0.1:4178/?v3`. The preview explicitly says **LOCAL PREVIEW · SYNTHETIC DATA**. Only mock mode replaces the Forge bridge, using the shared service/engine and local browser storage; production builds use the real bridge. Local mock issue IDs are synthetic. No Atlassian account is needed for preview.
+Open `http://127.0.0.1:4178/?three-tables`. The preview explicitly says **LOCAL PREVIEW · SYNTHETIC DATA**. Only mock mode replaces the Forge bridge, using the shared service/engine and local browser storage; production builds use the real bridge. Local mock issue IDs are synthetic. No Atlassian account is needed for preview.
 
-Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Select B's **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The files and exact settings are in [app/samples](app/samples) and the synthetic [examples](examples) package, including the 5.01 residual and domestic encodings. The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
+Choose `ledger.csv` as A, `bank.xlsx` as B and add `invoices.csv` as C; load the sources. Select B's **Transactions** worksheet, enable **Ignore leading zeros in keys** and **Aggregate C**, click **Confirm column mapping**, then run. Expected counts are **3 / 1 / 2 / 2 / 0**. The files and exact settings are in [app/samples](app/samples) and the synthetic [examples](examples) package, including the 5.01 residual and domestic encodings. The root [samples](samples) folder retains the original 300-row two-table fixtures (270 / 18 / 10 / 10 / 1).
 
 With preview running, `npm run test:ui` runs a headless Edge check at desktop/mobile widths, including real Worker parsing, worksheet/template reload, reviews, export and local uploads. It requires an installed Microsoft Edge browser. Outputs go to ignored `app/logs/`. `npm run check:manifest` validates the local manifest; authenticated Forge lint is `npm run lint:forge`. `npm run licenses` regenerates notices and enforces the existing license allowlist. The optional historical comparison requires your separately supplied engine through `RECONCILE_REFERENCE_FILE`; that private reference is not included.
 
@@ -65,7 +57,7 @@ For the existing shared production app, follow [JUDGE-INSTALL.md](JUDGE-INSTALL.
 
 Reconciliation data stays within Atlassian and the user’s browser: the app uses Atlassian product APIs and Forge storage, with no application-initiated external network calls.
 
-Product requests use `api.asUser()`. The server derives the issue/page from Forge context, rechecks access and attachment membership, and rejects arbitrary source attachment IDs. Templates are shared by project/space; stored runs are only readable from their authorized source. Full workbooks are not stored in Forge KVS. Every declared scope is used by the product API or Forge KVS adapters. Removing Jira read/write and Confluence page-read scopes individually produces Forge lint errors; attachment and KVS scope use is verified by code and adapter coverage because lint does not infer those dynamic paths. The manifest has no external egress permission or remote backend; the app calls no external model endpoint. Exports are downloaded by the user. See [PRIVACY.md](PRIVACY.md) and [SUPPORT.md](SUPPORT.md).
+Product requests use `api.asUser()`. The server derives the issue/page from Forge context, rechecks access and attachment membership, and rejects arbitrary source attachment IDs. Templates are shared by project/space; stored runs are only readable from their authorized source. Full workbooks are not stored in Forge KVS. Every declared scope is used by the product API or Forge KVS adapters. Removing Jira read/write and Confluence page-read scopes individually produces Forge lint errors; attachment and KVS scope use is verified by code and adapter coverage because lint does not infer those dynamic paths. The manifest has no external egress permission or remote backend; the app calls no external model endpoint. Exports are downloaded by the user. The `@aws-sdk/client-s3` dependency only satisfies exceljs packaging of an optional require: there are no S3 calls, external egress permissions or AWS credentials. See [PRIVACY.md](PRIVACY.md) and [SUPPORT.md](SUPPORT.md).
 
 ## Architecture
 
@@ -94,11 +86,9 @@ Each new run records the actor’s accountId, a stable content-based template ve
 
 Generate a report in the source Confluence page’s space, or supply an existing accessible page ID to select the intended space from Jira. The action **creates a new page** with counts, compact exception evidence, template version, annotation and audit trail. A serial retry for the same run and space reuses the report; it never updates the source page or an existing report. No global transaction lock is claimed, so serialize creation. Full source rows stay transient; retain the XLSX for complete evidence.
 
-Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded.
-
 ## Exception resolution
 
-Issues newly created by this version are tracked by source, named template, rules and selected keys. On a rerun, Forge re-reads the authorized attachments and independently verifies that **every** linked key is now matched before adding a single evidence comment to the original issue. The UI then shows **Ready to close · 可关单**. Repeated balanced runs reuse the comment receipt; missing keys and changed rules do not count as resolution. No issue transition or automatic closure is performed. Existing references from earlier versions are not retroactively enrolled.
+Issues created or discovered through the current exception-label lookup are tracked by source, named template, rules and selected keys. On a rerun, Forge re-reads the authorized attachments and independently verifies that **every** linked key is now matched before adding a single evidence comment to the original issue. The UI then shows **Ready to close**. Repeated balanced runs reuse the comment receipt; missing keys and changed rules do not count as resolution. No issue transition or automatic closure is performed. Earlier references are not bulk migrated; a current JQL-label reuse explicitly enrolls that issue in closure tracking.
 
 The live [closure example](examples/closure) created one grouped synthetic exception, reran corrected source data, added one comment containing the verified run ID, and showed Ready to close. A repeated balanced run added no comment; the issue status ID remained unchanged.
 
@@ -145,3 +135,19 @@ All values are development measurements on three identical, narrow synthetic tab
 ## License and dependencies
 
 [MIT](LICENSE), Copyright (c) 2026 Chuzheng Xia. ExcelJS, Papa Parse and React use permissive licenses. [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) preserves direct/transitive notices and tooling licenses; [LICENSING-REVIEW.md](LICENSING-REVIEW.md) explains the unzipper override and optional bundler dependency. The dependency license gate remains unchanged: unknown and non-allowlisted declarations fail. Passing it is not a full security audit.
+
+
+## Changelog and historical acceptance
+
+Production 2.1.0 passed a read-only Jira smoke check on an existing synthetic test issue: the three attachments returned **3 / 1 / 2 / 2 / 0**, the checked source issue fields remained unchanged, and no issue was created. The existing sharing link still displays the app, both products and the expected scopes. Production Confluence macro rendering remains unverified: the existing synthetic page contains only a development macro, and no page was changed during the read-only production check. Its successful development coverage below is separate.
+
+On development 3.8.0, real Jira and Confluence UI runs compared three attached files containing **6 / 6 / 7** data rows. Both returned **3 matched / 1 mismatch / 2 only in reference / 2 missing from reference / 0 duplicates**. Actual downloaded workbooks were checked for ten worksheets, eight result keys and the differing amount cell's colour.
+
+Development 3.9.0 repeated the Jira counts and fixed unstable property-order serialization in evidence identities. One explicit grouped confirmation created one test issue for selected keys 3 and 4. After a full page refresh, saved-template reload and identical rerun, the next confirmation reused that issue with no new issue. Both Explained and Ignored reviews and their notes returned; hiding reviewed exceptions reduced eight displayed rows to six. Changed amounts, row counts and rules invalidate old reviews and prevent issue reuse in local service tests. Old-version records were not migrated or claimed as migrated.
+
+On a free Forge demo development site, the real Rovo agent ran a saved three-table template, returned a persisted run ID and the same counts, and explained the observed 300 versus 305 amount difference, delta 5. The run was independently found in the real run-history UI. After explicit confirmation, Rovo created one Jira issue for a single selected exception; a repeated request reused that same issue with zero new issues. On development 3.10.0, Rovo explicitly confirmed grouped=true for two selected exceptions, created one grouped test issue, then reused it with zero new issues on a second explicitly confirmed request.
+
+Development 4.0.0 live acceptance recorded a Jira run, review and explicit grouped confirmation that reused the task’s existing issue with zero new issues. A real Confluence macro run generated one new report in the existing synthetic test space; the source page’s version/body remained unchanged and a repeated request reused the unchanged report. Production was not upgraded during that development acceptance; application package 4.0.0 was subsequently deployed to production as described above.
+
+
+The demo video uses real headless cloud captures with synthetic inputs. The locally prepared English v11 demo is 172.8 seconds, 1920×1080 at 30 fps; its audio/video decode, freeze, silence and clipping checks passed. Its exported-workbook viewer is explicitly labelled LOCAL EXPORT VIEW; the v11 demo includes the real Rovo grouped create-then-reuse recording and phase 14 feature captures. Unaffected Confluence footage remains identified as development 3.8.0.
