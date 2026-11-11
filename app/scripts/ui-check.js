@@ -22,7 +22,7 @@ try {
     await page.getByLabel('Select exception ap-0001', { exact: true }).check();
     await page.getByLabel('Issue type ID', { exact: true }).fill('10001');
     await page.getByRole('button', { name: 'Review issue creation', exact: true }).click();
-    assert.match(await page.getByRole('region', { name: 'Confirm issue creation' }).innerText(), /one grouped issue for ap-0001/);
+    assert.match(await page.getByRole('region', { name: 'Confirm issue creation' }).innerText(), /one grouped issue for Exception \#\d+ \(key ap-0001\) in/);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     evidence.push({ width, twoTableCounts: [270, 18, 10, 10, 1], defaultRunClicks: 1, specificSelectionConfirmation: true });
     await page.goto('http://127.0.0.1:4178/?three-tables');

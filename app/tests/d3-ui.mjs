@@ -23,9 +23,11 @@ try {
   // Clear only the test browser's saved session to exercise auto-selection again.
   await page.evaluate(() => sessionStorage.clear()); await page.reload(); await settle();
   await page.getByText(autoHint, { exact: true }).waitFor();
-  await button('Reset').click();
-  assert.equal(await page.getByText(autoHint, { exact: true }).count(), 0);
-  await page.reload(); await settle();
+  // Reset is the same as a first open: sources are chosen again from the attachments and the auto-selection hint is shown again.
+  await button('Reset').click(); await settle();
+  await page.getByText(autoHint, { exact: true }).waitFor();
+  for (const [letter, id] of [['A', '0'], ['B', '1'], ['C', '2']]) assert.equal(await page.getByLabel(`Source ${letter}`, { exact: true }).inputValue(), id);
+  await page.evaluate(() => sessionStorage.clear()); await page.reload(); await settle();
   await page.getByText(autoHint, { exact: true }).waitFor();
   const meta = page.locator('.file-meta').nth(1).locator(':scope > span');
   for (let i = 0; i < 10; i++) {
@@ -54,9 +56,9 @@ try {
   await button('Load selected sources').click();
   assert.equal(await page.getByText(hint, { exact: true }).count(), 0); await settle();
   await page.reload(); await page.getByText(hint, { exact: true }).waitFor(); await settle();
-  await button('Reset').click();
+  await button('Reset').click(); await settle();
   assert.equal(await page.getByText(hint, { exact: true }).count(), 0);
-  assert.equal(await page.getByLabel('Source B', { exact: true }).inputValue(), '');
+  assert.equal(await page.getByLabel('Source B', { exact: true }).inputValue(), '1');
   assert.deepEqual(errors, []);
-  console.log('D3 UI passed: auto-selection hint and both dismissals; 10 alternating worksheet switches, loading labels/actions, delayed session restore, reload dismissal, Reset dismissal.');
+  console.log('D3 UI passed: auto-selection hint and both dismissals; 10 alternating worksheet switches, loading labels/actions, delayed session restore, reload dismissal, Reset returns to the first-open state.');
 } finally { await browser.close(); }

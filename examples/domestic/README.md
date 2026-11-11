@@ -26,4 +26,4 @@ Expected result: all three synthetic rows match. The original evidence stays vis
 
 Keep CSV thousands separators quoted. An unquoted `2,000.00` is read as two columns, as with any CSV.
 
-Use **Reset** to clear the sources, worksheets, mapping and results before another example.
+Use **Reset** to clear the worksheets, mapping and results and return to the state of a first open (sources are chosen again from the issue's current attachments) before another example.

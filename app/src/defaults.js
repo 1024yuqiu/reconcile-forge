@@ -37,3 +37,65 @@ export function defaultIssueType(types) {
 
 // Readable names for exceptions in audit cards and Rovo text: ids are zero-based positions in the run's result list.
 export const exceptionText = ({ id, label }) => `Exception #${id} (key ${label})`;
+
+// Attachment list identity: file name + id, order independent. Used to decide whether a saved session still matches the issue.
+export const attachmentSignature = list => (Array.isArray(list) ? list : []).map(a => `${String(a?.id)}\u0000${String(a?.name ?? '')}`).sort().join('\u0001');
+export const attachmentSnapshot = list => (Array.isArray(list) ? list : []).map(a => ({ id: String(a.id), name: String(a.name ?? '') }));
+
+// Number of empty source cards to offer when nothing could be chosen automatically: three attachments keep A / B / C available.
+const blankCards = list => Math.min(3, Math.max(2, Array.isArray(list) ? list.length : 0));
+export const blankSources = list => Array.from({ length: blankCards(list) }, () => ({ id: '' }));
+
+// Decides how the panel starts, for a first open, a reload with a saved session, and Reset (previous = null).
+// mode: 'session' (saved sources are still valid), 'attachments' (chosen from file names), 'manual' (user chooses), 'none' (fewer than two attachments).
+// A saved session is used only when its attachment snapshot (name + id) equals the current attachment list.
+export function planStart(attachments, previous) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  const saved = previous?.sources;
+  const same = Array.isArray(previous?.attachments) && attachmentSignature(previous.attachments) === attachmentSignature(list);
+  const usable = Array.isArray(saved) && saved.length >= 2 && saved.length <= 5 && saved.every(s => s && !s.local && (s.kind === 'jql' || list.some(a => a.id === s.id)));
+  if (usable && same) return { mode: 'session', sources: saved, changed: false };
+  const changed = Boolean(previous) && Array.isArray(saved) && saved.length > 0 && !same;
+  if (list.length >= 2) {
+    const { sources } = chooseSources(list);
+    if (sources.length) return { mode: 'attachments', sources, changed };
+    return { mode: 'manual', sources: blankSources(list), changed };
+  }
+  return { mode: 'none', sources: blankSources(list), changed };
+}
+
+export const ATTACHMENTS_CHANGED = 'Attachments changed since your last session, so sources were re-checked.';
+
+// Readable list of exceptions for confirmations: one exception in full, several as "N exceptions: #0 (key a), #2 (key b) …".
+export function exceptionListText(items, max = 3) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 1) return exceptionText(list[0]);
+  const shown = list.slice(0, max).map(e => `#${e.id} (key ${e.label})`).join(', ');
+  return `${list.length} exceptions: ${shown}${list.length > max ? ' …' : ''}`;
+}
+
+// "Task (10001)" using the loaded issue type list; just the id when the name is unknown (manually typed id).
+export function issueTypeText(types, id) {
+  const type = (Array.isArray(types) ? types : []).find(t => String(t?.id) === String(id));
+  return type?.name ? `${type.name} (${id})` : String(id);
+}
+
+// Confirmation sentence shown before creating Jira issues.
+export function confirmCreateText({ items, grouped, project, types, issueType, parent }) {
+  const count = items.length;
+  const what = grouped ? 'one grouped issue' : count === 1 ? 'one issue' : `${count} separate issues`;
+  return `Create ${what} for ${exceptionListText(items)} in ${project}, type ${issueTypeText(types, issueType)}${parent ? `, parent ${parent}` : ''}?`;
+}
+
+// Creation result sentence, same wording as the Rovo action: "Created Issue: X" / "Reused Issue: X".
+export function issueResultText(created, reused, separator = '. ') {
+  const parts = [...(created || []).map(key => `Created Issue: ${key}`), ...(reused || []).map(key => `Reused Issue: ${key}`)];
+  return parts.length ? parts.join(separator) : 'No issue was created or reused';
+}
+
+// Audit card line for an issue-confirmation event. Older records only have selectedIds (no selected/key): they read "Exception IDs: #0".
+export function auditSelectionText(event) {
+  const ids = Array.isArray(event?.selectedIds) ? event.selectedIds : [];
+  const list = Array.isArray(event?.selected) ? event.selected.map(e => exceptionText({ id: e.id, label: e.key })).join('; ') : `Exception IDs: ${ids.map(id => `#${id}`).join(', ')}`;
+  return `Selected exceptions: ${ids.length} · ${list} · Confirmed: ${String(event.confirmed)} · Grouped: ${String(event.grouped)} · Project: ${event.project} · Type: ${event.issueType}`;
+}

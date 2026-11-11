@@ -25,7 +25,11 @@ try {
   const manual = await open(text => text.replace('name: f.name, size: 18000', "name: 'data' + i + '.csv', size: 18000"));
   const hint = 'This issue has 3 attachments, so sources were not auto-selected. Choose A / B / C manually (for the three-table sample: ledger as A), then click Load selected sources.';
   await manual.getByText(hint, { exact: true }).waitFor();
-  assert.deepEqual(await sources(manual, ['A', 'B']), ['', '']);
+  assert.deepEqual(await sources(manual), ['', '', '']);
+  await manual.getByRole('button', { name: 'Reset', exact: true }).click();
+  await manual.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent === 'Reset' && !b.disabled));
+  await manual.getByText(hint, { exact: true }).waitFor();
+  assert.deepEqual(await sources(manual), ['', '', '']);
   await manual.getByLabel('Source A', { exact: true }).selectOption('0');
   await manual.getByLabel('Source B', { exact: true }).selectOption('1');
   await manual.getByRole('button', { name: 'Load selected sources', exact: true }).click(); await settle(manual);

@@ -13,7 +13,7 @@ try {
   await page.route('**/mock-data/v3/*', async route => { await new Promise(r => setTimeout(r, 200)); await route.continue(); });
   await page.goto('http://127.0.0.1:4178/?three-tables');
   await page.getByText('Reconcile / Loading', { exact: true }).waitFor();
-  assert.match(await page.locator('.environment').innerText(), /v4\.1\.3/);
+  assert.match(await page.locator('.environment').innerText(), /v4\.1\.4/);
   await button('Confirm column mapping').waitFor(); await settle();
   assert.equal(await page.getByLabel('Worksheet B', { exact: true }).inputValue(), 'Transactions');
   await button('Confirm column mapping').click();
@@ -39,11 +39,13 @@ try {
   await page.reload(); await button('Confirm column mapping').waitFor(); await settle();
   await page.getByText('Restored from your last session. Please re-check sources and worksheets, or click Reset.', { exact: true }).waitFor();
   assert.equal(await button('Run reconciliation').isDisabled(), true);
-  await button('Reset').click();
-  assert.equal(await page.getByLabel('Source A', { exact: true }).inputValue(), '');
-  assert.equal(await page.getByLabel('Source B', { exact: true }).inputValue(), '');
-  assert.equal(await page.locator('.mapping, .results, .file-meta').count(), 0);
-  assert.equal(await page.evaluate(() => Object.keys(sessionStorage).filter(k => k.startsWith('reconcile-session:')).length), 0);
+  // Reset behaves like a first open: attachments are identified again, so the three sample files give A / B / C and three cards.
+  await button('Reset').click(); await settle();
+  for (const [letter, id] of [['A', '0'], ['B', '1'], ['C', '2']]) assert.equal(await page.getByLabel(`Source ${letter}`, { exact: true }).inputValue(), id);
+  assert.equal(await page.locator('.card.source').count(), 3);
+  await page.getByText("Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset.", { exact: true }).waitFor();
+  await button('Remove table C').click();
+  assert.equal(await page.locator('.card.source').count(), 2);
   // Real Worker + checkbox + download + ExcelJS read-back using supplied domestic examples.
   await page.locator('input[type=file]').nth(0).setInputFiles('../examples/domestic/domestic-clean.csv');
   await page.locator('.file-meta strong').first().waitFor();
