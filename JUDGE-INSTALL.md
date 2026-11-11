@@ -30,6 +30,8 @@ Select at most 20 exception checkboxes. **Group selected exceptions** is enabled
 
 Follow `examples/closure/README.md`: save a named template, run the initial differing data, and explicitly create the selected grouped exception. Attach/select the corrected export, reuse the same template and rerun. Once every linked key matches, Forge re-reads the authorized source and adds one evidence comment to the app-created exception issue; **Ready to close** appears. Another balanced run adds no comment. Review and close manually; the app never changes issue status. Historical references are not bulk migrated; current label-based reuse is now enrolled in tracking.
 
+`closure-base.csv`, `closure-open.csv`, `closure-third.csv` and `closure-fixed.csv` each contain only one data row. The panel shows “This sheet has almost no data rows — check the worksheet selection.” for each file. This warning is expected for these example files and can be ignored.
+
 ## 5. Audit trail and Confluence report
 
 Add an optional **Run annotation** before running. The audit card shows actor accountId, content-based template version and annotation. **Load audit trail** displays event cards for run, reviews, explicit confirmation, creation/reuse and report receipts.
@@ -38,7 +40,19 @@ From Confluence, **Generate Confluence report** uses the source page's space. Fr
 
 ## 6. Rovo grouped creation and reuse
 
-On a Rovo-enabled site, choose **Reconciliation Assistant**. Provide the source issue key, two to five attachment IDs in saved-template order, and the exact saved template name. Ask to run, then explain stored exceptions; the returned run ID and counts refer to persisted evidence.
+Choose **Reconciliation Assistant** on a Rovo-enabled site. You must provide the source Jira issue key, attachment IDs and exact saved project template name. The agent does not support listing saved templates; open the Reconcile panel on an issue in that project to view or save a named template.
+
+The run action inputs are `issueKey`, `attachmentIds` (a comma-separated string of 2–5 numeric IDs in saved-template table order) and `template` (the exact, case-sensitive saved name). Spaces around comma-separated IDs are trimmed. For two tables, `attachmentA` and `attachmentB` are supported instead; a nonempty `attachmentIds` overrides them. Use the number of attachments required by the template. All attachments must belong to the source issue.
+
+The panel's **Source** dropdown shows filenames, not attachment IDs. To find IDs, while signed in to Jira with access to the source issue, open `/rest/api/3/issue/KAN-5?fields=attachment` on that same Jira site (replace `KAN-5` as needed). In `fields.attachment`, match each `filename` to its numeric `id`; use the `id`, not the filename or issue ID.
+
+Copy this prompt, replacing `<id1>`, `<id2>` and `<id3>` with the IDs for closure-base, closure-open and closure-third respectively, after saving their confirmed mapping as `closure-test` on KAN-5:
+
+```text
+Run reconciliation on KAN-5 with attachment IDs <id1>,<id2>,<id3> using template closure-test.
+```
+
+Ask to run, then explain stored exceptions; the returned run ID and counts refer to persisted evidence.
 
 Ask for grouped issue creation for explicit exception IDs, project and numeric issue type. Verify the confirmation includes **grouped=true**, then confirm. Ask again for the identical evidence and confirm again: the second result should have **Created: none**, **Reused: the same issue**. Real grouped creation and serial reuse were previously verified on the existing demo development site; see README Changelog. The app does not invent root causes.
 
