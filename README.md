@@ -1,8 +1,8 @@
-# Reconcile v4.1.5 for Jira & Confluence
+# Reconcile v4.1.6 for Jira & Confluence
 
 Compare two to five attached CSV/XLSX exports, investigate differences and turn selected exceptions into Jira work. Reconcile runs on Atlassian Forge with a Jira issue panel, a Confluence macro and the Reconciliation Assistant in Rovo.
 
-Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository contains application package **4.1.5**; the panel header reads **ATLASSIAN FORGE · v4.1.5**. Forge major/deployment numbers and the application package version are independent. The production checks recorded for 4.1.3 on 2026-11-11 (major 3, both installations Up-to-date, a brand-new account and site installing through the sharing link with no extra consent page or error, the three-table sample returning 3 / 1 / 2 / 2 / 0) must be repeated after 4.1.5 is deployed. This repository is MIT licensed.
+Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.md](JUDGE-INSTALL.md). This repository contains application package **4.1.6**; the panel header reads **ATLASSIAN FORGE · v4.1.6**. Forge major/deployment numbers and the application package version are independent. The production checks recorded for 4.1.3 on 2026-11-11 (major 3, both installations Up-to-date, a brand-new account and site installing through the sharing link with no extra consent page or error, the three-table sample returning 3 / 1 / 2 / 2 / 0) must be repeated after 4.1.6 is deployed. This repository is MIT licensed.
 
 ## Features
 
@@ -17,7 +17,7 @@ Judges install Reconcile through the production sharing link in [JUDGE-INSTALL.m
 
 ## What has actually been verified
 
-All cloud acceptance data was synthetic. The source test suite passes **128/128** tests, plus **6/6** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
+All cloud acceptance data was synthetic. The source test suite passes **133/133** tests, plus **6/6** Confluence/Rovo adapter tests. Local tests cover two through five tables, rule boundaries, parsing, workbook output, authorization and changed-evidence invalidation. Five-table coverage is local, rather than a live five-table acceptance claim. Phase 14 also passed the desktop/mobile headless UI regression, including the new explicit mapping confirmation.
 
 The published demo video is v13: **3:19** (198.8 seconds), 1920×1080 at 30 fps, at https://youtu.be/a5KJ6qXPxVk. It combines current production captures (the audit trail, one newly generated Confluence report and its opened link) with earlier live development captures; every scene carries an on-screen source label. The Rovo segment replays existing recorded conversations read-only; no new Rovo action was run for the recording. Decode, freeze, silence and clipping checks passed.
 
@@ -127,7 +127,7 @@ Attachments are auto-selected only when they can be told apart reliably: exactly
 
 ## Confirm column mapping
 
-Column-name similarity and up to 20 sample values per column produce **High / Medium / Low** proposals. Low or ambiguous candidates remain blank. A person must choose missing columns and click **Confirm column mapping** before running or saving a new template. Selecting an existing saved template explicitly restores its previously confirmed mapping. Changing columns or rules requires confirmation again. Confidence describes the proposal, not the correctness of the source data.
+Column-name similarity and up to 20 sample values per column produce **High / Medium / Low** proposals. Low or ambiguous candidates remain blank. A person must choose missing columns and click **Confirm column mapping** before running or saving a new template. Selecting an existing saved template explicitly restores its previously confirmed mapping. Changing columns or rules requires confirmation again. Confidence describes the proposal, not the correctness of the source data. The template name box starts with the example text "Monthly AP vs bank", but that text is not recorded: a run, the issue descriptions created from it and the Confluence report show the template name only after you saved a template or loaded a saved one, and otherwise read "Template: (unsaved)".
 
 The live [mapping example](examples/mapping) shows High key confidence, Medium `Amount` → `Amuont`, and Low `Date` → `Booking`. The Low date column stays blank and Run stays disabled until a person selects Booking and confirms; the resulting record matches.
 

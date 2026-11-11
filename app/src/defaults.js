@@ -110,8 +110,8 @@ export const manualHint = count => count === 3
 // Session record saved in sessionStorage: sources, the mapping config, the two option checkboxes that are easy to lose
 // (Ignore leading zeros in keys, Aggregate per table) and whether the column mapping was confirmed.
 export const sessionOptions = config => ({ leadingZeros: Boolean(config?.keyRules?.leadingZeros), aggregate: (config?.aggregate || []).map(Boolean) });
-export function sessionRecord({ sources, config, mappingConfirmed, attachments }) {
-  return { sources, config, options: config ? sessionOptions(config) : null, mappingConfirmed: Boolean(config && mappingConfirmed), attachments };
+export function sessionRecord({ sources, config, mappingConfirmed, attachments, namedTemplate }) {
+  return { sources, config, options: config ? sessionOptions(config) : null, mappingConfirmed: Boolean(config && mappingConfirmed), attachments, namedTemplate: typeof namedTemplate === 'string' ? namedTemplate : '' };
 }
 export const OPTIONS_RECHECK = 'This older session did not store the checkboxes, so "Ignore leading zeros in keys" and "Aggregate" were reset. Please re-check them.';
 
@@ -123,6 +123,8 @@ function fits(config, files) {
     && Array.isArray(config.fields) && config.fields.every(f => Array.isArray(f.columns) && f.columns.length === n && f.columns.every((c, i) => has(i, c)))
     && Array.isArray(config.aggregate) && config.aggregate.length === n && config.keyRules && typeof config.keyRules === 'object';
 }
+// Template name recorded with a run: only a template the user saved or loaded; the default text in the name box is not one.
+export const recordedTemplateName = namedTemplate => (typeof namedTemplate === 'string' ? namedTemplate.trim() : '');
 // Returns { config, mappingConfirmed, optionsReset } for restoring a session after loading files. config is null when the
 // saved one does not fit (the caller keeps its fresh proposal). Sessions saved before 4.1.5 have no options: defaults are used.
 export function restoreSession(previous, files, fresh) {

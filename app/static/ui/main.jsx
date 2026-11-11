@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { invoke, view, router } from '@forge/bridge';
 import { DEFAULT_RULES, STATUSES } from '../../src/reconcile.js';
 import { mappingSuggestions, compactResult, PASSES } from '../../src/multi.js';
-import { ATTACHMENTS_CHANGED, attachmentSnapshot, auditSelectionText, confirmCreateText, defaultIssueType, exceptionText, issueResultText, manualHint, OPTIONS_RECHECK, planStart, restoreSession, sessionRecord } from '../../src/defaults.js';
+import { ATTACHMENTS_CHANGED, attachmentSnapshot, recordedTemplateName, auditSelectionText, confirmCreateText, defaultIssueType, exceptionText, issueResultText, manualHint, OPTIONS_RECHECK, planStart, restoreSession, sessionRecord } from '../../src/defaults.js';
 import './style.css';
 import { latestPreview } from './preview-state.js';
 import { version } from '../../package.json';
@@ -42,7 +42,7 @@ function App() {
   function initialConfig(next) { const suggestions = mappingSuggestions(next); setMappingAdvice(suggestions.advice); setMappingConfirmed(false); return { ...suggestions.proposed, baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: false }, aggregate: next.map(() => false), acceptedPairs: [] }; }
   async function load(nextSources) {
     const request = previewRequests.current.begin();
-    setPreviewLoading(true); setMappingConfirmed(false); invalidate();
+    setPreviewLoading(true); setMappingConfirmed(false); setNamedTemplate(''); invalidate();
     try {
     const next = [];
     for (const s of nextSources) {
@@ -66,7 +66,7 @@ function App() {
       if (plan.mode === 'session' && loaded) {
         // Put back the mapping, the two option checkboxes and the confirmed state, so Run works right after a refresh.
         const back = restoreSession(previous, loaded, initialConfig(loaded));
-        if (back.config) { setConfig(back.config); setMappingConfirmed(back.mappingConfirmed); setOptionsReset(back.optionsReset); }
+        if (back.config) { setNamedTemplate(recordedTemplateName(previous?.namedTemplate)); setConfig(back.config); setMappingConfirmed(back.mappingConfirmed); setOptionsReset(back.optionsReset); }
       }
     } else setRestored(plan.mode === 'manual' ? 'manual' : '');
   }
@@ -85,14 +85,14 @@ function App() {
     if (!sessionReady || !sessionKey.current || busy) return;
     try {
       if (sources.some(s => s.local || (!s.id && s.kind !== 'jql'))) sessionStorage.removeItem(sessionKey.current);
-      else sessionStorage.setItem(sessionKey.current, JSON.stringify(sessionRecord({ sources, config, mappingConfirmed, attachments: snapshot.current })));
+      else sessionStorage.setItem(sessionKey.current, JSON.stringify(sessionRecord({ sources, config, mappingConfirmed, attachments: snapshot.current, namedTemplate })));
     } catch {}
-  }, [sources, config, mappingConfirmed, busy, sessionReady]);
+  }, [sources, config, mappingConfirmed, namedTemplate, busy, sessionReady]);
   // Reset returns to the state of a first open: attachments are read again and sources are chosen the same way.
   function reset() { action(async () => {
     previewRequests.current.begin(); setPreviewLoading(false);
     setConfig(null); setMappingAdvice([]); setMappingConfirmed(false);
-    invalidate(); setRunNote(''); setRestored(''); setAttachmentsChanged(false); setError(''); setNotice(''); setFilter('all'); setSearch(''); setPage(0); setTab('workspace');
+    invalidate(); setNamedTemplate(''); setTemplateName('Monthly AP vs bank'); setRunNote(''); setRestored(''); setAttachmentsChanged(false); setError(''); setNotice(''); setFilter('all'); setSearch(''); setPage(0); setTab('workspace');
     setOriginalLayout(false); setStatementView(false); setHideReviewed(false); setReviewNote(''); setReportPageId('');
     try { sessionStorage.removeItem(sessionKey.current); } catch {}
     const data = await invoke('bootstrap'); setBoot(data); snapshot.current = attachmentSnapshot(data.attachments);
@@ -107,7 +107,7 @@ function App() {
     const output = await workerTask({ operation: 'run', files, config: nextConfig });
     if (sources.every(s => !s.local)) {
       const compact = compactResult(output);
-      const saved = await invoke('saveRun', { sources, config: nextConfig, templateName, note: runNote, result: compact });
+      const saved = await invoke('saveRun', { sources, config: nextConfig, templateName: recordedTemplateName(namedTemplate), note: runNote, result: compact });
       const byId = new Map(saved.reviews.map(r => [r.id, r]));
       output.results = output.results.map(r => ({ ...r, ...byId.get(r.id) }));
       output.id = saved.id; output.savedExceptions = saved.savedExceptions; output.auditSummary = saved.auditSummary; output.readyToClose = saved.readyToClose; output.resolutionWarning = saved.resolutionWarning; setBoot(await invoke('bootstrap'));
@@ -129,7 +129,7 @@ function App() {
       (t.mappings[0].compare || []).forEach((h, i) => fields.push({ id: `text-${i}`, name: h, type: 'text', columns: t.mappings.map(m => m.compare[i]), ...t.rules }));
       setConfig({ ...initialConfig(files), keys: t.mappings.map(m => m.keys), fields, keyRules: t.rules });
     }
-    setTemplateName(t.name); setMappingConfirmed(true); invalidate();
+    setTemplateName(t.name); setNamedTemplate(t.name); setMappingConfirmed(true); invalidate();
   }
   const filtered = result?.results.filter(r => (filter === 'all' || r.status === filter) && (!hideReviewed || !r.review) && (!statementView || r.pairs.some(p => ['only-a', 'only-b'].includes(p.status))) && JSON.stringify(r).toLowerCase().includes(search.toLowerCase())) || [];
   const savedIds = new Set(result?.results.filter(r => r.signature).map(r => r.id));
@@ -154,7 +154,7 @@ function App() {
     </div>)}</div>
     <div className="source-actions"><button disabled={busy} onClick={reset}>Reset</button><button disabled={busy || sources.some(s => !s.local && s.kind !== 'jql' && !s.id)} onClick={() => action(() => { setRestored(''); return load(sources); })}>Load selected sources</button><button disabled={busy || sources.length === 5} onClick={() => { setConfig(null); setMappingConfirmed(false); setSources(s => [...s, { id: '' }]); setFiles(f => [...f, null]); invalidate(); }}>Add table</button><span className="hint">2–5 CSV / XLSX tables · Attached file limit 2 MB</span></div>{restored && <div className="alert" role="status">{restored === 'session' ? 'Restored from your last session. Please re-check sources and worksheets, or click Reset.' : restored === 'manual' ? manualHint(boot?.attachments.length) : "Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset."}</div>}{restored === 'session' && optionsReset && <div className="alert" role="status">{OPTIONS_RECHECK}</div>}{attachmentsChanged && <div className="alert" role="status">{ATTACHMENTS_CHANGED}</div>}</>}</section>
     {files.every(Boolean) && config && <section className="card mapping"><fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}><h2><span className="step">2</span> Map columns & set rules</h2>
-      <div className="template"><label>Project / space template<select aria-label="Saved template" disabled={busy} value="" onChange={e => { const t = boot.templates.find(t => t.name === e.target.value); if (t) action(() => applyTemplate(t)); }}><option value="">Select saved rules</option>{boot?.templates.map(t => <option key={t.name}>{t.name}</option>)}</select></label><label>Template name<input value={templateName} maxLength={80} onChange={e => { setTemplateName(e.target.value); }}/></label><button disabled={busy || !mappingConfirmed} onClick={() => action(async () => { const templates = await invoke('saveTemplate', { name: templateName, config, sources: sources.map(s => ({ sheet: s.sheet })) }); setBoot({ ...boot, templates }); setNotice('Template saved for this project or space.'); })}>Save template</button></div>
+      <div className="template"><label>Project / space template<select aria-label="Saved template" disabled={busy} value="" onChange={e => { const t = boot.templates.find(t => t.name === e.target.value); if (t) action(() => applyTemplate(t)); }}><option value="">Select saved rules</option>{boot?.templates.map(t => <option key={t.name}>{t.name}</option>)}</select></label><label>Template name<input value={templateName} maxLength={80} onChange={e => { setTemplateName(e.target.value); }}/></label><button disabled={busy || !mappingConfirmed} onClick={() => action(async () => { const templates = await invoke('saveTemplate', { name: templateName, config, sources: sources.map(s => ({ sheet: s.sheet })) }); setBoot({ ...boot, templates }); setNamedTemplate(templateName); setNotice('Template saved for this project or space.'); })}>Save template</button></div>
       <div className="card" aria-label="Column mapping suggestions"><h3>Column mapping suggestions</h3><p>{mappingConfirmed ? 'Column mapping confirmed. Selecting a saved template confirms its previously saved mapping.' : 'Proposals only: review columns and sample values, then confirm. Low-confidence proposals are left blank for a manual choice.'}</p>{!mappingConfirmed && <ul>{mappingAdvice.map((a, i) => <li key={i}>Table {letter(a.table)} · {a.target} → {a.source} · <b>{a.confidence}</b> · {a.reason}</li>)}</ul>}<button disabled={busy || mappingConfirmed || config.keys.some(keys => keys.some(key => !key)) || config.fields.some(f => f.type !== 'ignore' && f.columns.some(column => !column))} onClick={() => { setMappingConfirmed(true); setNotice('Column mapping confirmed. You can now save these rules or run reconciliation.'); }}>Confirm column mapping</button></div>
       <label className="base-picker">Base table<select aria-label="Base table" value={config.baseIndex} onChange={e => changeConfig({ ...config, baseIndex: Number(e.target.value), acceptedPairs: [] })}>{files.map((f, i) => <option key={i} value={i}>{letter(i)} · {f.name}</option>)}</select></label>
       <div className="mapping-grid">{files.map((f, i) => <div key={i}><h3>Table {letter(i)} mapping</h3><label>Key columns <small>Ctrl / ⌘ to select a composite key</small><select multiple aria-label={`Key columns ${letter(i)}`} value={config.keys[i] || []} onChange={e => changeConfig({ ...config, keys: config.keys.map((k, j) => j === i ? Array.from(e.target.selectedOptions, o => o.value) : k), acceptedPairs: [] })}>{f.headers.map(h => <option key={h}>{h}</option>)}</select></label><label className="check"><input type="checkbox" aria-label={`Aggregate ${letter(i)}`} checked={Boolean(config.aggregate[i])} onChange={e => changeConfig({ ...config, aggregate: config.aggregate.map((v, j) => j === i ? e.target.checked : v) })}/>Sum numeric fields by key; retain component rows</label></div>)}</div>

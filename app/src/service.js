@@ -1,7 +1,7 @@
 import { reconcile } from './reconcile.js';
 import { reconcileTables, exceptionSignature, stableStringify } from './multi.js';
 import { exceptionText } from './defaults.js';
-import { issueDescription, issueSummary, amountsOf } from './describe.js';
+import { issueDescription, issueSummary, amountsOf, UNSAVED_TEMPLATE } from './describe.js';
 export const MAX_SAVED_EXCEPTIONS = 200;
 
 export function createService({ store, jira, confluence, loadAttachment, uuid, digest, now }) {
@@ -193,7 +193,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     const reportUrl = page => { const path = page._links?.webui || `/pages/${page.id}`; return path.startsWith('/wiki/') ? path : `/wiki${path}`; };
     if (cached) { const existing = await confluence('page', { id: cached.id }); return { ...cached, url: reportUrl(existing), reused: true }; }
     const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-    const html = `<h1>Reconciliation report</h1><p>Run: ${escape(record.id)}</p><p>When: ${escape(record.when)}</p><p>Actor accountId: ${escape(record.who)}</p><p>Template: ${escape(record.templateName)} / version ${escape(record.templateVersion)}</p><p>Annotation: ${escape(record.note)}</p><p>Sources: ${escape(record.files.join(' / '))}</p><h2>Counts</h2><table><tbody>${Object.entries(record.summary).map(([status, count]) => `<tr><th>${escape(status)}</th><td>${count}</td></tr>`).join('')}</tbody></table><h2>Compact exception evidence</h2><pre>${escape(JSON.stringify(record.exceptions, null, 2))}</pre><h2>Audit events</h2><pre>${escape(JSON.stringify(record.audit || [], null, 2))}</pre><p>Full source rows are not stored in this report. Retain the XLSX evidence. No issue status was changed.</p>`;
+    const html = `<h1>Reconciliation report</h1><p>Run: ${escape(record.id)}</p><p>When: ${escape(record.when)}</p><p>Actor accountId: ${escape(record.who)}</p><p>Template: ${escape(record.templateName || UNSAVED_TEMPLATE)} / version ${escape(record.templateVersion)}</p><p>Annotation: ${escape(record.note)}</p><p>Sources: ${escape(record.files.join(' / '))}</p><h2>Counts</h2><table><tbody>${Object.entries(record.summary).map(([status, count]) => `<tr><th>${escape(status)}</th><td>${count}</td></tr>`).join('')}</tbody></table><h2>Compact exception evidence</h2><pre>${escape(JSON.stringify(record.exceptions, null, 2))}</pre><h2>Audit events</h2><pre>${escape(JSON.stringify(record.audit || [], null, 2))}</pre><p>Full source rows are not stored in this report. Retain the XLSX evidence. No issue status was changed.</p>`;
     const created = await confluence('createPage', { spaceId: page.spaceId, status: 'current', title: `Reconcile report ${record.when.slice(0, 19)} ${record.id.slice(0, 8)}`, body: { representation: 'storage', value: html } });
     const report = { id: created.id, spaceId: page.spaceId, runId: record.id, url: reportUrl(created) };
     await store.set(key, report);

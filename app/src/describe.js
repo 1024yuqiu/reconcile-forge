@@ -4,6 +4,8 @@ import { exceptionText } from './defaults.js';
 // Pure functions: they read the saved run record and the exception rows, and never print raw JSON.
 
 const MAX_TEXT = 24000;
+// Shown where a template name would be when the run did not come from a template the user saved or loaded.
+export const UNSAVED_TEMPLATE = '(unsaved)';
 export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const letter = i => String.fromCharCode(65 + i);
 const parse = value => { if (typeof value !== 'string') return Array.isArray(value) ? value : []; try { const v = JSON.parse(value); return Array.isArray(v) ? v : []; } catch { return null; } };
@@ -75,7 +77,7 @@ const paragraph = (...lines) => ({ type: 'paragraph', content: lines.flatMap((li
 // description for one or many exceptions. rows: saved exception records. Returns an ADF document.
 export function issueDescription({ record, rows, grouped }) {
   const files = record.files || [], header = [`Reconciliation run ${record.id}`];
-  if (record.templateName) header.push(`Template: ${record.templateName}`);
+  header.push(`Template: ${record.templateName || UNSAVED_TEMPLATE}`);
   files.forEach((name, i) => header.push(`Source ${letter(i)}: ${name}`));
   header.push(grouped || rows.length > 1 ? `${plural(rows.length, 'exception')} (grouped in this issue)` : `${plural(rows.length, 'exception')}`);
   const content = [paragraph(...header)];

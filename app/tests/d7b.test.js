@@ -90,7 +90,7 @@ test('description handles old two-table records, truncated diffs and long groups
   const record = { id: 'r9', files: ['a.csv', 'b.csv'], templateName: '' };
   const old = { id: '0', key: '4', label: '4', status: 'mismatch', counts: { a: 1, b: 1 }, diffs: JSON.stringify([{ field: 'amount', a: 10, b: 12 }, { field: 'memo', a: 'x', b: undefined }]) };
   const t = adfText(issueDescription({ record, rows: [old], grouped: false }));
-  assert.ok(!t.includes('Template:'));
+  assert.match(t, /Template: \(unsaved\)/);
   assert.match(t, /amount: 10\.00 → 12\.00/); assert.match(t, /memo: x → \(empty\)/); assert.match(t, /Rows: A 1 · B 1/);
   const cut = adfText(issueDescription({ record, rows: [{ ...old, diffs: '[{"field":"amount","a":1' }], grouped: false }));
   assert.match(cut, /too long to show/); assert.ok(!cut.includes('{"'));
