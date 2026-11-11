@@ -38,7 +38,8 @@ try {
   await page.getByRole('heading', { name: 'annotation', exact: true }).waitFor();
   await page.reload(); await button('Confirm column mapping').waitFor(); await settle();
   await page.getByText('Restored from your last session. Please re-check sources and worksheets, or click Reset.', { exact: true }).waitFor();
-  assert.equal(await button('Run reconciliation').isDisabled(), true);
+  // 4.1.5: the confirmed mapping is restored with the session, so Run is available without re-confirming.
+  assert.equal(await button('Run reconciliation').isDisabled(), false);
   // Reset behaves like a first open: attachments are identified again, so the three sample files give A / B / C and three cards.
   await button('Reset').click(); await settle();
   for (const [letter, id] of [['A', '0'], ['B', '1'], ['C', '2']]) assert.equal(await page.getByLabel(`Source ${letter}`, { exact: true }).inputValue(), id);

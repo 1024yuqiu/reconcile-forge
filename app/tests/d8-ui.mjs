@@ -12,7 +12,8 @@ const zeros = page => page.getByLabel('Ignore leading zeros in keys', { exact: t
 const aggC = page => page.getByLabel('Aggregate C', { exact: true });
 const page = await browser.newPage(); page.setDefaultTimeout(20000);
 page.on('pageerror', e => problems.push(`pageerror: ${e.message}`));
-page.on('console', m => { if (['error', 'warning'].includes(m.type())) problems.push(`console.${m.type()}: ${m.text()}`); });
+page.on('console', m => { if (['error', 'warning'].includes(m.type()) && !(m.text().startsWith('Failed to load resource') && (m.location().url || '').endsWith('/favicon.ico'))) problems.push(`console.${m.type()}: ${m.text()}`); });
+page.on('response', r => { if (r.status() >= 400 && !r.url().endsWith('/favicon.ico')) problems.push(`HTTP ${r.status()}: ${r.url()}`); });
 try {
   await page.goto('http://127.0.0.1:4178/?three-tables'); await settle(page);
   await zeros(page).check(); await aggC(page).check();
