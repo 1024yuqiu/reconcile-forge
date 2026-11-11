@@ -4,6 +4,7 @@ import { invoke, view, router } from '@forge/bridge';
 import { DEFAULT_RULES, STATUSES } from '../../src/reconcile.js';
 import { mappingSuggestions, PASSES } from '../../src/multi.js';
 import './style.css';
+import { latestPreview } from './preview-state.js';
 import { version } from '../../package.json';
 const labels = { matched: 'Matched', mismatch: 'Value mismatch', 'only-a': 'Only in base', 'only-b': 'Missing from base', duplicate: 'Duplicate keys' };
 const isMock = import.meta.env.MODE === 'mock';
@@ -31,20 +32,25 @@ function App() {
   const [issueTypes, setIssueTypes] = useState([]);
   const [runNote, setRunNote] = useState(''), [audit, setAudit] = useState(null), [reportPageId, setReportPageId] = useState(''), [report, setReport] = useState(null);
   const working = useRef(false), sessionKey = useRef(null);
-  const [restored, setRestored] = useState(false);
+  const [restored, setRestored] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false), [sessionReady, setSessionReady] = useState(false);
+  const previewRequests = useRef(latestPreview());
   async function action(fn) { if (working.current) return; working.current = true; setBusy(true); setError(''); setNotice(''); try { await fn(); } catch (e) { setError(e.message); } finally { working.current = false; setBusy(false); } }
   function invalidate() { setResult(null); setSelected([]); setConfirm(false); setReviewId(''); setAudit(null); setReport(null); }
   function initialConfig(next) { const suggestions = mappingSuggestions(next); setMappingAdvice(suggestions.advice); setMappingConfirmed(false); return { ...suggestions.proposed, baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: false }, aggregate: next.map(() => false), acceptedPairs: [] }; }
   async function load(nextSources) {
-    setMappingConfirmed(false); invalidate();
+    const request = previewRequests.current.begin();
+    setPreviewLoading(true); setMappingConfirmed(false); invalidate();
     try {
     const next = [];
     for (const s of nextSources) {
       const f = s.local ? await workerTask({ operation: 'parse', bytes: s.bytes, name: s.name, sheet: s.sheet }) : await invoke('loadSource', s);
       next.push(f.bytes64 ? await workerTask({ operation: 'parse', bytes: Uint8Array.from(atob(f.bytes64), c => c.charCodeAt(0)), name: f.name, sheet: s.sheet }) : f);
     }
+    if (!request.current()) return;
     setFiles(next); setSources(nextSources.map((s, i) => ({ ...s, sheet: next[i].sheet }))); setConfig(initialConfig(next)); invalidate();
-    } catch (error) { setConfig(null); setFiles(nextSources.map(() => null)); throw error; }
+    } catch (error) { if (!request.current()) return; setConfig(null); setFiles(nextSources.map(() => null)); throw error; }
+    finally { if (request.current()) setPreviewLoading(false); }
   }
   useEffect(() => { action(async () => {
     await view.theme.enable(); const data = await invoke('bootstrap'); setBoot(data);
@@ -53,21 +59,24 @@ function App() {
     let previous;
     try { previous = JSON.parse(sessionStorage.getItem(sessionKey.current)); } catch {}
     if (previous?.sources?.length >= 2 && previous.sources.length <= 5 && previous.sources.every(s => !s.local && (s.kind === 'jql' || data.attachments.some(a => a.id === s.id)))) {
-      setSources(previous.sources); setRestored(true); await load(previous.sources);
+      setSources(previous.sources); await load(previous.sources);
+      setRestored('session');
       if (previous.config?.keys?.length === previous.sources.length) setConfig(previous.config);
       setMappingConfirmed(false);
-    } else if (data.attachments.length >= 2) { const next = data.attachments.slice(0, 2).map(a => ({ id: a.id })); setSources(next); await load(next); }
+    } else if (data.attachments.length >= 2) { const next = data.attachments.slice(0, 2).map(a => ({ id: a.id })); setSources(next); await load(next); setRestored('attachments'); }
+    setSessionReady(true);
   }); }, []);
   useEffect(() => {
-    if (!sessionKey.current || busy) return;
+    if (!sessionReady || !sessionKey.current || busy) return;
     try {
       if (sources.some(s => s.local || (!s.id && s.kind !== 'jql'))) sessionStorage.removeItem(sessionKey.current);
       else sessionStorage.setItem(sessionKey.current, JSON.stringify({ sources, config }));
     } catch {}
-  }, [sources, config, busy]);
+  }, [sources, config, busy, sessionReady]);
   function reset() {
+    previewRequests.current.begin(); setPreviewLoading(false);
     setSources([{ id: '' }, { id: '' }]); setFiles([null, null]); setConfig(null); setMappingAdvice([]); setMappingConfirmed(false);
-    invalidate(); setRunNote(''); setRestored(false); setError(''); setNotice(''); setFilter('all'); setSearch(''); setPage(0); setTab('workspace');
+    invalidate(); setRunNote(''); setRestored(''); setError(''); setNotice(''); setFilter('all'); setSearch(''); setPage(0); setTab('workspace');
     setOriginalLayout(false); setStatementView(false); setHideReviewed(false); setReviewNote(''); setReportPageId('');
     try { sessionStorage.removeItem(sessionKey.current); } catch {}
   }
@@ -110,23 +119,22 @@ function App() {
     <header className="topbar"><div className="brand"><img src="./icon.svg" alt=""/><strong>Reconcile</strong><span>for Jira & Confluence</span></div><span className="environment">{isMock ? `LOCAL PREVIEW · SYNTHETIC DATA · v${version}` : `ATLASSIAN FORGE · v${version}`}</span></header>
     <div className="heading"><div><p className="eyebrow">{boot ? `${boot.scope.kind === 'confluence' ? 'CONFLUENCE PAGE' : 'JIRA ISSUE'} / ${boot.scope.id}` : 'Reconcile / Loading'}</p><h1>{sources.length === 2 ? 'Two exports. One clear answer.' : 'Your exports. One clear answer.'}</h1><p>Match records, investigate differences and turn exceptions into action.</p></div><span className="privacy">No external data egress</span></div>
     <nav aria-label="Workspace"><button className={tab === 'workspace' ? 'active' : ''} onClick={() => setTab('workspace')}>Reconciliation</button><button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>Run history <span>{boot?.history.length || 0}</span></button></nav>
-    {restored && <div className="alert" role="status">Restored from last session — re-check sources A/B/C and worksheets.</div>}
     {error && <div className="alert error" role="alert">{error}</div>}{notice && <div className="alert" role="status">{notice}</div>}
     {tab === 'history' ? <section className="card"><h2>Recent runs on this {boot?.scope.kind === 'jira' ? 'issue' : 'page'}</h2><p>Last 20 summaries. Open the source files and rerun to review full results.</p>{boot?.history.map(h => <article className="history" key={h.id}><strong>{h.files.join(' ↔ ')}</strong><span>{new Date(h.when).toLocaleString()} · {h.who}</span><code>{h.id}</code><p>{Object.entries(h.summary).map(([s, n]) => `${labels[s]}: ${n}`).join(' · ')}</p></article>)}</section> : <>
     <section className="sources"><h2><span className="step">1</span> Choose your sources</h2><div className="source-grid">{sources.map((source, i) => <div className="card source" key={i}>
       <div className="card-title"><b className={`letter ${i ? 'b' : ''}`}>{letter(i)}</b><div><h3>{i ? 'Comparison table' : 'Reference table'}</h3><p>{i ? 'Bank statement or issue export' : 'AP ledger or baseline export'}</p></div>{sources.length > 2 && <button disabled={busy} aria-label={`Remove table ${letter(i)}`} onClick={() => { setSources(s => s.filter((_, j) => j !== i)); setFiles(f => f.filter((_, j) => j !== i)); setConfig(null); invalidate(); }}>Remove</button>}</div>
       <label>Source<select disabled={busy} aria-label={`Source ${letter(i)}`} value={source.kind === 'jql' ? 'jql' : source.id} onChange={e => changeSource(i, e.target.value === 'jql' ? { kind: 'jql', jql: '' } : { id: e.target.value })}><option value="">Select attachment</option>{boot?.attachments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}{i > 0 && <option value="jql">JQL result</option>}</select></label>
       {source.kind === 'jql' && <label>JQL query<textarea value={source.jql} onChange={e => changeSource(i, { kind: 'jql', jql: e.target.value })}/></label>}
-      {files[i] && <div className="file-meta"><strong>{files[i].name}</strong><span>{files[i].rows.length.toLocaleString()} rows · {files[i].headers.length} columns · header row {files[i].headerRow || 1}</span>{files[i].sheets?.length > 1 && <label>Worksheet {letter(i)}<select aria-label={`Worksheet ${letter(i)}`} value={files[i].sheet} disabled={busy} onChange={e => { const sheet = e.target.value; action(async () => {
+      {files[i] && <div className="file-meta"><strong>{files[i].name}</strong><span>{previewLoading ? 'Loading…' : `${files[i].rows.length.toLocaleString()} rows · ${files[i].headers.length} columns · header row ${files[i].headerRow || 1}`}</span>{files[i].sheets?.length > 1 && <label>Worksheet {letter(i)}<select aria-label={`Worksheet ${letter(i)}`} value={source.sheet || files[i].sheet} disabled={busy} onChange={e => { const sheet = e.target.value; action(async () => {
         const nextSources = sources.map((s, j) => j === i ? { ...s, sheet } : s);
         setSources(nextSources); await load(nextSources);
-      }); }}>{files[i].sheets.map(s => <option key={s}>{s}</option>)}</select></label>}{files[i].rows.length <= 1 && <p role="status">This sheet has almost no data rows — check the worksheet selection.</p>}</div>}
+      }); }}>{files[i].sheets.map(s => <option key={s}>{s}</option>)}</select></label>}{!previewLoading && files[i].rows.length <= 1 && <p role="status">This sheet has almost no data rows — check the worksheet selection.</p>}</div>}
       {isMock && <label className="upload">Or use a local XLSX / CSV<input type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => { const file = e.target.files[0]; if (file) action(async () => {
         const bytes = await file.arrayBuffer(), parsed = await workerTask({ operation: 'parse', bytes, name: file.name });
         const next = files.map((f, j) => i === j ? parsed : f); setFiles(next); setSources(s => s.map((v, j) => i === j ? { id: '', local: true, bytes, name: file.name } : v)); if (next.every(Boolean)) setConfig(initialConfig(next)); invalidate();
       }); }}/></label>}
     </div>)}</div>
-    <div className="source-actions"><button disabled={busy} onClick={reset}>Reset</button><button disabled={busy || sources.some(s => !s.local && s.kind !== 'jql' && !s.id)} onClick={() => action(() => load(sources))}>Load selected sources</button><button disabled={busy || sources.length === 5} onClick={() => { setConfig(null); setMappingConfirmed(false); setSources(s => [...s, { id: '' }]); setFiles(f => [...f, null]); invalidate(); }}>Add table</button><span className="hint">2–5 CSV / XLSX tables · Attached file limit 2 MB</span></div></section>
+    <div className="source-actions"><button disabled={busy} onClick={reset}>Reset</button><button disabled={busy || sources.some(s => !s.local && s.kind !== 'jql' && !s.id)} onClick={() => action(() => { setRestored(''); return load(sources); })}>Load selected sources</button><button disabled={busy || sources.length === 5} onClick={() => { setConfig(null); setMappingConfirmed(false); setSources(s => [...s, { id: '' }]); setFiles(f => [...f, null]); invalidate(); }}>Add table</button><span className="hint">2–5 CSV / XLSX tables · Attached file limit 2 MB</span></div>{restored && <div className="alert" role="status">{restored === 'session' ? 'Restored from your last session. Please re-check sources and worksheets, or click Reset.' : "Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset."}</div>}</section>
     {files.every(Boolean) && config && <section className="card mapping"><fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}><h2><span className="step">2</span> Map columns & set rules</h2>
       <div className="template"><label>Project / space template<select aria-label="Saved template" disabled={busy} value="" onChange={e => { const t = boot.templates.find(t => t.name === e.target.value); if (t) action(() => applyTemplate(t)); }}><option value="">Select saved rules</option>{boot?.templates.map(t => <option key={t.name}>{t.name}</option>)}</select></label><label>Template name<input value={templateName} maxLength={80} onChange={e => { setTemplateName(e.target.value); invalidate(); }}/></label><button disabled={busy || !mappingConfirmed} onClick={() => action(async () => { const templates = await invoke('saveTemplate', { name: templateName, config, sources: sources.map(s => ({ sheet: s.sheet })) }); setBoot({ ...boot, templates }); setNotice('Template saved for this project or space.'); })}>Save template</button></div>
       <div className="card" aria-label="Column mapping suggestions"><h3>Column mapping suggestions</h3><p>{mappingConfirmed ? 'Column mapping confirmed. Selecting a saved template confirms its previously saved mapping.' : 'Proposals only: review columns and sample values, then confirm. Low-confidence proposals are left blank for a manual choice.'}</p>{!mappingConfirmed && <ul>{mappingAdvice.map((a, i) => <li key={i}>Table {letter(a.table)} · {a.target} → {a.source} · <b>{a.confidence}</b> · {a.reason}</li>)}</ul>}<button disabled={busy || mappingConfirmed || config.keys.some(keys => keys.some(key => !key)) || config.fields.some(f => f.type !== 'ignore' && f.columns.some(column => !column))} onClick={() => { setMappingConfirmed(true); setNotice('Column mapping confirmed. You can now save these rules or run reconciliation.'); }}>Confirm column mapping</button></div>

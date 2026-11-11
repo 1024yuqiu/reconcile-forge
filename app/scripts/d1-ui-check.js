@@ -13,7 +13,7 @@ try {
   await page.route('**/mock-data/v3/*', async route => { await new Promise(r => setTimeout(r, 200)); await route.continue(); });
   await page.goto('http://127.0.0.1:4178/?three-tables');
   await page.getByText('Reconcile / Loading', { exact: true }).waitFor();
-  assert.match(await page.locator('.environment').innerText(), /v4\.1\.0/);
+  assert.match(await page.locator('.environment').innerText(), /v4\.1\.1/);
   await button('Confirm column mapping').waitFor(); await settle();
   assert.equal(await page.getByLabel('Worksheet B', { exact: true }).inputValue(), 'Transactions');
   await button('Confirm column mapping').click();
@@ -37,7 +37,7 @@ try {
   await button('Load audit trail').click();
   await page.getByRole('heading', { name: 'annotation', exact: true }).waitFor();
   await page.reload(); await button('Confirm column mapping').waitFor(); await settle();
-  await page.getByText('Restored from last session — re-check sources A/B/C and worksheets.', { exact: true }).waitFor();
+  await page.getByText('Restored from your last session. Please re-check sources and worksheets, or click Reset.', { exact: true }).waitFor();
   assert.equal(await button('Run reconciliation').isDisabled(), true);
   await button('Reset').click();
   assert.equal(await page.getByLabel('Source A', { exact: true }).inputValue(), '');
