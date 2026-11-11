@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { createService } from '../src/service.js';
 import { suggestFields, reconcileTables } from '../src/multi.js';
 import { DEFAULT_RULES } from '../src/reconcile.js';
-const fixture = (persistedOrder = false) => {
+const fixture = (persistedOrder = false, existingIssue) => {
   const state = new Map(), created = [], comments = [], pages = [], files = ['100', '105', '100'].map((Amount, i) => ({ name: `${i}.csv`, headers: ['Order ID', 'Amount'], rows: [{ 'Order ID': '1', Amount }] }));
   const context = { accountId: 'reviewer', extension: { issue: { key: 'T-1' } } }; let id = 0;
   const service = createService({ store: { get: async k => state.get(k), set: async (k, v) => state.set(k, persistedOrder ? JSON.parse(JSON.stringify(v, (_, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value)) : structuredClone(v)), delete: async k => state.delete(k) },
@@ -12,15 +12,35 @@ const fixture = (persistedOrder = false) => {
     jira: async (op, p) => {
       if (op === 'issue') return { key: p.key, fields: { project: { key: p.key.split('-')[0] } } };
       if (op === 'attachments') return files.map((f, i) => ({ name: f.name, id: String(i) }));
-      if (op === 'findException') return undefined;
+      if (op === 'findException') return existingIssue;
       if (op === 'create') { created.push(p); return { key: `T-${created.length + 1}` }; }
       if (op === 'comment') { comments.push(p); return { id: String(comments.length) }; }
-    }, confluence: async (op,p) => { if(op==='page')return {id:p.id,spaceId:'9'};if(op==='createPage'){pages.push(p);return {id:`page-${pages.length}`,spaceId:p.spaceId};}throw new Error('Unexpected Confluence mutation');} });
+    }, confluence: async (op,p) => { if(op==='page')return {id:p.id,spaceId:'9',_links:{webui:`/spaces/TEST/pages/${p.id}`}};if(op==='createPage'){pages.push(p);return {id:`page-${pages.length}`,spaceId:p.spaceId,_links:{webui:`/spaces/TEST/pages/page-${pages.length}`}};}throw new Error('Unexpected Confluence mutation');} });
   const config = { ...suggestFields(files), baseIndex: 0, keyRules: DEFAULT_RULES, aggregate: [false, false, false], acceptedPairs: [] };
   state.set('templates:project:T', [{ name: 'Monthly', config }]);
   const payload = { sources: files.map((f, i) => ({ id: String(i) })), config, templateName: 'Monthly' };
   return { state, created, comments, pages, files, service, context, payload };
 };
+for (const grouped of [false, true]) test(`JQL-only reuse enrolls closure links and restores cached tracking (grouped=${grouped})`, async () => {
+  const f = fixture(false, 'T-99');
+  const run = await f.service.run(f.context, f.payload);
+  const request = { runId: run.id, project: 'T', issueType: '10001', selectedIds: ['0'], confirmed: true, grouped };
+  assert.deepEqual((await f.service.createIssues(f.context, request)).reused, ['T-99']);
+  assert.equal(f.created.length, 0);
+  const linkKey = [...f.state.keys()].find(key => key.startsWith('links:'));
+  assert.deepEqual(f.state.get(linkKey)[0].keys, [run.results[0].key]);
+  f.state.delete(linkKey);
+  await f.service.createIssues(f.context, request);
+  assert.equal(f.state.get(linkKey)[0].issue, 'T-99');
+  f.files[1].rows[0].Amount = '100';
+  const balanced = await f.service.run(f.context, f.payload);
+  assert.deepEqual(balanced.readyToClose, [{ issue: 'T-99', evidenceRunId: balanced.id }]);
+  assert.equal(f.comments.length, 1);
+  assert.equal(f.comments[0].key, 'T-99');
+  await f.service.run(f.context, f.payload);
+  assert.equal(f.comments.length, 1);
+});
+
 test('saved N-table template, reviewed exceptions survive rerun and changed evidence does not', async () => {
   const { service, context, payload, files } = fixture();
   await service.saveTemplate(context, { name: 'Monthly', ...payload });
@@ -163,7 +183,8 @@ test('run audit records actor, content-version, annotation, review and explicit 
 test('Confluence report creates one new page with escaped evidence and serial retries reuse without editing',async()=>{
   const f=fixture(),run=await f.service.run(f.context,{...f.payload,note:'<script>synthetic</script>'});
   const request={runId:run.id,pageId:'42'};
-  assert.equal((await f.service.createReport(f.context,request)).reused,false);
+  const report=await f.service.createReport(f.context,request);
+  assert.equal(report.reused,false);assert.equal(report.url,'/wiki/spaces/TEST/pages/page-1');
   assert.equal((await f.service.createReport(f.context,request)).reused,true);
   assert.equal(f.pages.length,1);assert.equal(f.pages[0].spaceId,'9');
   assert.match(f.pages[0].body.value,/&lt;script&gt;/);assert.ok(!f.pages[0].body.value.includes('<script>'));

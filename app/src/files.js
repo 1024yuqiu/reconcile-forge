@@ -86,7 +86,7 @@ export async function exportMultiWorkbook(run, files, options = {}) {
   const book = new ExcelJS.Workbook(), base = run.baseIndex;
   const highlight = cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE7A0' } }; };
   const summary = book.addWorksheet('Summary');
-  summary.addRows([['Reconcile v3', 'All results, independent of screen filters'], ['Base table', files[base].name], ['Rules', JSON.stringify(run.config)], ...Object.entries(run.summary), ...Object.entries(run.reasonSummary).map(([k, v]) => [`Reason: ${k}`, v]), ['Rule passes', 'Exact key → Key + tolerance → Aggregated → Possible match (explicit acceptance only)']]);
+  summary.addRows([['Reconcile', 'All results, independent of screen filters'], ['Base table', files[base].name], ['Rules', JSON.stringify(run.config)], ...Object.entries(run.summary), ...Object.entries(run.reasonSummary).map(([k, v]) => [`Reason: ${k}`, v]), ['Rule passes', 'Exact key → Key + tolerance → Aggregated → Possible match (explicit acceptance only)']]);
   files.forEach((f, t) => summary.addRow([`Table ${t + 1}`, `${f.name} / ${f.sheet || 'CSV'} / header row ${f.headerRow || 1} / ${run.inputRows[t]} rows`]));
   for (const s of run.statements) summary.addRows([[`Statement: ${s.name}`, s.balances ? 'Balances' : 'Does not balance'], ['Base total', s.baseTotal], ['Less: in base, not other', s.baseOnly], ['Plus: in other, not base', s.otherOnly], ['Adjusted base', s.adjusted], ['Other total', s.otherTotal], ['Unresolved residual', s.residual]]);
   const fields = run.config.fields.filter(f => f.type !== 'ignore');

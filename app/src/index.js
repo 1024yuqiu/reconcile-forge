@@ -15,6 +15,10 @@ async function jira(operation, p) {
     const issue = await json(await client.requestJira(route`/rest/api/3/issue/${p.key}?fields=project,attachment`));
     return operation === 'issue' ? issue : issue.fields.attachment.filter(a => /\.(csv|xlsx)$/i.test(a.filename)).map(a => ({ id: a.id, name: a.filename, size: a.size }));
   }
+  if (operation === 'issueTypes') {
+    const project = await json(await client.requestJira(route`/rest/api/3/project/${p.project}`));
+    return project.issueTypes.map(type => ({ id: type.id, name: type.name }));
+  }
   if (operation === 'jql') {
     const issues = []; let nextPageToken;
     do {
@@ -65,7 +69,7 @@ async function loadAttachment(s, attachment, sheet, rawBytes = false) {
 }
 const service = createService({ store: kvs, jira, confluence, loadAttachment, uuid: randomUUID, digest: value => createHash('sha256').update(value).digest('hex').slice(0, 32), now: () => new Date().toISOString() });
 const definitions = {};
-for (const operation of ['bootstrap', 'saveTemplate', 'run', 'saveRun', 'reviewException', 'createIssues', 'auditRun', 'createReport']) definitions[operation] = async ({ context, payload }) => {
+for (const operation of ['bootstrap', 'saveTemplate', 'run', 'saveRun', 'reviewException', 'createIssues', 'auditRun', 'createReport', 'issueTypes']) definitions[operation] = async ({ context, payload }) => {
   const result = await service[operation](context, payload);
   if (Buffer.byteLength(JSON.stringify(result)) > 3 * 1024 * 1024) throw new Error('Results exceed the 3 MB bridge safety limit. Split the source files and rerun.');
   return result;

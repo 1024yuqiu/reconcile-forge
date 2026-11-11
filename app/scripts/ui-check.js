@@ -22,10 +22,10 @@ try {
     await page.getByLabel('Select exception ap-0001', { exact: true }).check();
     await page.getByLabel('Issue type ID', { exact: true }).fill('10001');
     await page.getByRole('button', { name: 'Review issue creation', exact: true }).click();
-    assert.match(await page.getByRole('region', { name: 'Confirm issue creation' }).innerText(), /1 issues for ap-0001/);
+    assert.match(await page.getByRole('region', { name: 'Confirm issue creation' }).innerText(), /one grouped issue for ap-0001/);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     evidence.push({ width, twoTableCounts: [270, 18, 10, 10, 1], defaultRunClicks: 1, specificSelectionConfirmation: true });
-    await page.goto('http://127.0.0.1:4178/?v3');
+    await page.goto('http://127.0.0.1:4178/?three-tables');
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).waitFor();
     await page.getByLabel('Source A', { exact: true }).selectOption({ label: 'ledger.csv' });
     await page.getByLabel('Source B', { exact: true }).selectOption({ label: 'bank.xlsx' });
@@ -37,13 +37,13 @@ try {
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).waitFor();
     await page.getByLabel('Ignore leading zeros in keys', { exact: true }).check();
     await page.getByLabel('Aggregate C', { exact: true }).check();
-    await page.getByLabel('Template name', { exact: true }).fill(`V3 synthetic ${width}`);
+    await page.getByLabel('Template name', { exact: true }).fill(`V4 synthetic ${width}`);
     await confirmMapping(page);
     await page.getByRole('button', { name: 'Save template', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Template saved' }).waitFor();
     await page.getByLabel('Worksheet B', { exact: true }).selectOption('Read me');
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).waitFor();
-    await page.getByLabel('Saved template', { exact: true }).selectOption({ label: `V3 synthetic ${width}` });
+    await page.getByLabel('Saved template', { exact: true }).selectOption({ label: `V4 synthetic ${width}` });
     await page.waitForFunction(() => document.querySelector('[aria-label="Worksheet B"]').value === 'Transactions' && document.querySelector('[aria-label="Aggregate C"]').checked);
     await confirmMapping(page);
     await page.getByRole('button', { name: 'Run reconciliation', exact: true }).click();

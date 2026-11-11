@@ -151,7 +151,12 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
       const cached = await store.get(`dedupe:${hash}`);
       if (cached) { await jira('issue', { key: cached.issue }); if (cached.tracking) await trackIssue(record, cached.tracking); reused.push(cached.issue); continue; }
       const existing = await jira('findException', { label, project: payload.project });
-      if (existing) { reused.push(existing); continue; }
+      if (existing) {
+        const tracking = { issue: existing, keys: (payload.grouped ? selected : [row]).map(r => r.key), configIdentity: configIdentity(record), when: now() };
+        await store.set(`dedupe:${hash}`, { issue: existing, runId: record.id, tracking });
+        await trackIssue(record, tracking);
+        reused.push(existing); continue;
+      }
       const fields = { project: { key: payload.project }, issuetype: { id: payload.issueType }, summary: `Reconcile: ${row.status} — ${row.label}`.slice(0, 250), labels: ['reconcile', label], description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: `Run ${record.id}\nSources: ${record.files.join(' / ')}\nKey: ${row.label}\nStatus: ${row.status}\nDifferences: ${row.diffs || 'Review missing or duplicate source rows.'}` }] }] } };
       if (payload.parent) { if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(payload.parent)) throw new Error('Invalid parent issue key.'); fields.parent = { key: payload.parent }; }
       const issue = await jira('create', { fields });
@@ -172,17 +177,23 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     const pageId = payload.pageId || (record.source.kind === 'confluence' ? record.source.id : '');
     if (!/^\d+$/.test(pageId)) throw new Error('Enter an existing Confluence page ID in the intended report space.');
     const page = await confluence('page', { id: pageId }), key = `report:${record.id}:${page.spaceId}`, cached = await store.get(key);
-    if (cached) { await confluence('page', { id: cached.id }); return { ...cached, reused: true }; }
+    const reportUrl = page => { const path = page._links?.webui || `/pages/${page.id}`; return path.startsWith('/wiki/') ? path : `/wiki${path}`; };
+    if (cached) { const existing = await confluence('page', { id: cached.id }); return { ...cached, url: reportUrl(existing), reused: true }; }
     const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
     const html = `<h1>Reconciliation report</h1><p>Run: ${escape(record.id)}</p><p>When: ${escape(record.when)}</p><p>Actor accountId: ${escape(record.who)}</p><p>Template: ${escape(record.templateName)} / version ${escape(record.templateVersion)}</p><p>Annotation: ${escape(record.note)}</p><p>Sources: ${escape(record.files.join(' / '))}</p><h2>Counts</h2><table><tbody>${Object.entries(record.summary).map(([status, count]) => `<tr><th>${escape(status)}</th><td>${count}</td></tr>`).join('')}</tbody></table><h2>Compact exception evidence</h2><pre>${escape(JSON.stringify(record.exceptions, null, 2))}</pre><h2>Audit events</h2><pre>${escape(JSON.stringify(record.audit || [], null, 2))}</pre><p>Full source rows are not stored in this report. Retain the XLSX evidence. No issue status was changed.</p>`;
     const created = await confluence('createPage', { spaceId: page.spaceId, status: 'current', title: `Reconcile report ${record.when.slice(0, 19)} ${record.id.slice(0, 8)}`, body: { representation: 'storage', value: html } });
-    const report = { id: created.id, spaceId: page.spaceId, runId: record.id };
+    const report = { id: created.id, spaceId: page.spaceId, runId: record.id, url: reportUrl(created) };
     await store.set(key, report);
     await appendAudit(record, { event: 'report-created', who: context.accountId, pageId: created.id, spaceId: page.spaceId });
     return { ...report, reused: false };
   }
   return {
     scope, source, run, saveRun, savedRun, createIssues, reviewException, auditRun, createReport,
+    async issueTypes(context, payload) {
+      await scope(context);
+      if (!/^[A-Z][A-Z0-9_]*$/.test(payload.project)) throw new Error('Enter a valid target project key.');
+      return jira('issueTypes', { project: payload.project });
+    },
     async bootstrap(context) {
       const s = await scope(context);
       return { scope: s, attachments: await attachments(s), templates: await store.get(`templates:${s.namespace}`) || [], history: await store.get(`history:${s.kind}:${s.id}`) || [] };
