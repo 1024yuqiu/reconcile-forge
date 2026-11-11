@@ -1,6 +1,7 @@
 import { reconcile } from './reconcile.js';
 import { reconcileTables, exceptionSignature, stableStringify } from './multi.js';
 import { exceptionText } from './defaults.js';
+import { issueDescription, issueSummary } from './describe.js';
 export const MAX_SAVED_EXCEPTIONS = 200;
 
 export function createService({ store, jira, confluence, loadAttachment, uuid, digest, now }) {
@@ -74,6 +75,12 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     const result = payload.config ? reconcileTables(files, payload.config) : reconcile(files[0], files[1], payload.mappings, payload.rules);
     return persist(s, payload, result, files, true);
   }
+  // Per-table amounts (in currency units) for the first number fields, kept so issue descriptions can show them.
+  function amountsOf(r, config) {
+    if (r.entries) return (config?.fields || []).filter(f => f.type === 'number').slice(0, 3).map(f => ({ field: String(f.name).slice(0, 60), values: r.entries.map(e => e && Number.isFinite(e.values?.[f.id]) ? e.values[f.id] / 100 : null) }));
+    if (r.a || r.b) return [{ field: 'Amount', values: [r.a, r.b].map(e => e && Number.isFinite(e.amount) ? e.amount / 100 : null) }];
+    return [];
+  }
   async function persist(s, payload, result, files, serverVerified = false) {
     const templateName = payload.templateName || '';
     if (templateName.length > 80) throw new Error('Template name must be at most 80 characters.');
@@ -83,7 +90,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     const reviews = templateName ? await store.get(reviewNamespace) || [] : [];
     if (result.version === 3) result.results = result.results.map(r => { const signature = digest(stableStringify([payload.config, exceptionSignature(r)])); return { ...r, signature, review: reviews.find(v => v.signature === signature) || null }; });
     const exceptions = result.results.filter(r => r.status !== 'matched');
-    const record = { id: uuid(), when: now(), who: s.accountId, source: s, files: files.map(f => f.name), sources: payload.sources, rules: payload.rules || payload.config, mappings: payload.mappings || payload.config.keys, config: payload.config, templateName, reviewNamespace, summary: result.summary, inputRows: result.inputRows, exceptions: exceptions.slice(0, MAX_SAVED_EXCEPTIONS).map(r => ({ id: r.id, key: r.key, label: r.label.slice(0, 200), status: r.status, diffs: JSON.stringify(r.diffs).slice(0, 2000), counts: r.counts, ...(r.signature ? { signature: r.signature, review: r.review, pass: r.pass } : {}) })), exceptionCount: result.version === 3 ? Object.entries(result.summary).filter(([s]) => s !== 'matched').reduce((n, [, v]) => n + v, 0) : exceptions.length };
+    const record = { id: uuid(), when: now(), who: s.accountId, source: s, files: files.map(f => f.name), sources: payload.sources, rules: payload.rules || payload.config, mappings: payload.mappings || payload.config.keys, config: payload.config, templateName, reviewNamespace, baseIndex: result.baseIndex ?? 0, summary: result.summary, inputRows: result.inputRows, exceptions: exceptions.slice(0, MAX_SAVED_EXCEPTIONS).map(r => ({ id: r.id, key: r.key, label: r.label.slice(0, 200), status: r.status, diffs: JSON.stringify(r.diffs).slice(0, 2000), counts: r.counts, amounts: amountsOf(r, payload.config), ...(r.signature ? { signature: r.signature, review: r.review, pass: r.pass } : {}) })), exceptionCount: result.version === 3 ? Object.entries(result.summary).filter(([s]) => s !== 'matched').reduce((n, [, v]) => n + v, 0) : exceptions.length };
     record.templateVersion = digest(stableStringify([record.templateName, record.rules, record.mappings]));
     record.note = note;
     record.audit = [{ event: 'run', when: record.when, who: record.who, templateVersion: record.templateVersion, note }];
@@ -142,11 +149,14 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
       if (payload.confirmed !== true) throw new Error('Explicit confirmation is required for selected exceptions.');
     }
     await appendAudit(record, { event: 'issue-confirmation', who: context.accountId, confirmed: payload.confirmed === true, project: payload.project, issueType: payload.issueType, grouped: Boolean(payload.grouped), selectedIds: selected.map(r => r.id), selected: selected.map(r => ({ id: r.id, key: r.label })) });
-    const rows = payload.grouped ? [{ key: 'grouped', label: `${payload.selectedIds ? selected.length : record.exceptionCount} exceptions`, status: 'grouped', diffs: stableStringify((payload.selectedIds ? selected : record.exceptions).map(({ review, ...row }) => row)).slice(0, 12000) }] : selected;
+    // The dedupe hash covers the exception content only; display-only fields (amounts) are left out so existing issues keep being recognised.
+    const core = ({ review, amounts, ...row }) => row;
+    const groupedRows = payload.selectedIds ? selected : record.exceptions;
+    const rows = payload.grouped ? [{ key: 'grouped', label: `${payload.selectedIds ? selected.length : record.exceptionCount} exceptions`, status: 'grouped', diffs: stableStringify(groupedRows.map(core)).slice(0, 12000) }] : selected;
     const created = [], reused = [];
     for (const row of rows) {
       // Stable across reruns, scoped to source, target, rule set and exception content.
-      const { review, ...evidence } = row;
+      const evidence = core(row);
       const hash = digest(stableStringify([record.source.kind, record.source.id, payload.project, payload.issueType, payload.parent || '', record.rules, record.mappings, evidence]));
       const label = `reconcile-${hash}`;
       const cached = await store.get(`dedupe:${hash}`);
@@ -158,7 +168,7 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
         await trackIssue(record, tracking);
         reused.push(existing); continue;
       }
-      const fields = { project: { key: payload.project }, issuetype: { id: payload.issueType }, summary: `Reconcile: ${row.status} — ${row.label}`.slice(0, 250), labels: ['reconcile', label], description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: `Run ${record.id}\nSources: ${record.files.join(' / ')}\nKey: ${row.label}\nStatus: ${row.status}\nDifferences: ${row.diffs || 'Review missing or duplicate source rows.'}` }] }] } };
+      const fields = { project: { key: payload.project }, issuetype: { id: payload.issueType }, summary: issueSummary({ rows: groupedRows, row, grouped: payload.grouped, record }), labels: ['reconcile', label], description: issueDescription({ record, rows: payload.grouped ? groupedRows : [row], grouped: payload.grouped }) };
       if (payload.parent) { if (!/^[A-Z][A-Z0-9_]*-\d+$/.test(payload.parent)) throw new Error('Invalid parent issue key.'); fields.parent = { key: payload.parent }; }
       const issue = await jira('create', { fields });
       const tracking = { issue: issue.key, keys: (payload.grouped ? selected : [row]).map(r => r.key), configIdentity: configIdentity(record), when: now() };
