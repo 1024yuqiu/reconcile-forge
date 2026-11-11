@@ -64,7 +64,12 @@ Create one grouped issue for exception 0 from run <runId> in project KAN with nu
 
 The numeric ID is shown as the **Type** value in the panel's audit trail after a creation through the panel, or can be looked up in Jira's issue type settings. In the panel the **Type** dropdown usually selects Task for you.
 
-Rovo then shows a **Please review** card straight away, listing **Grouped: true**, **Confirmed: true**, **Exception IDs**, **Run ID** and **Issue Type**. Check that it says **Grouped: true**, then click **Confirm selected**. The result text includes **Mode: Grouped**, the exception as `Exception #0 (key …)` and **Created Issue: <key>**.
+Rovo does not always behave the same way, so expect either of these two flows:
+
+- **A.** Rovo shows a **Please review** card straight away.
+- **B.** Rovo first asks in plain text whether to continue. Reply **Yes, proceed.** and the **Please review** card appears after that.
+
+In both flows the card lists **Grouped: true**, **Confirmed: true**, **Exception IDs**, **Run ID** and **Issue Type**. Check that it says **Grouped: true**, then click **Confirm selected**. The result text includes **Mode: Grouped**, the exception as `Exception #0 (key …)` and **Created Issue: <key>**. Open the created issue: its description is plain text sections (run ID, template, Source A/B/C file names, then one `Exception #<id> (key <key>)` block with category, row counts, amounts and `field: A value → B value` lines), without raw JSON.
 
 Ask again for the identical evidence and confirm again: the second reply reads **Reused Issue: <the same issue key>** and no new issue is created. If a grouped issue already exists for the same evidence, even the first request reuses it; to see a first-time creation, choose an exception that has no issue yet, or test on a new source issue. Real grouped creation and serial reuse were previously verified on the existing demo development site; see README Changelog. The app does not invent root causes.
 
