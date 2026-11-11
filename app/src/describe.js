@@ -11,6 +11,23 @@ const isNum = v => typeof v === 'number' && Number.isFinite(v);
 const money = v => isNum(v) ? v.toFixed(2) : v === null || v === undefined || v === '' ? '(empty)' : String(v);
 const shown = v => (v === null || v === undefined || v === '' ? '(empty)' : String(v));
 
+// Per-table amounts (currency units) for the first number fields, kept on saved exceptions so issue descriptions can show them.
+// One normaliser for every path. Rovo/server runs carry full entries ({ values }); the panel sends compact entries
+// ({ components: [{ values }] }). Both give the same figure the result table shows: the entry's own values
+// (aggregated sum for grouped rows), or, when only components are present, the sum of their values.
+export function entryCents(entry, fieldId) {
+  if (!entry) return null;
+  const own = entry.values?.[fieldId];
+  if (Number.isFinite(own)) return own;
+  const parts = (Array.isArray(entry.components) ? entry.components : []).map(c => c?.values?.[fieldId]);
+  return parts.length && parts.every(Number.isFinite) ? parts.reduce((n, v) => n + v, 0) : null;
+}
+export function amountsOf(r, config) {
+  if (r.entries) return (config?.fields || []).filter(f => f.type === 'number').slice(0, 3).map(f => ({ field: String(f.name).slice(0, 60), values: r.entries.map(e => { const c = entryCents(e, f.id); return c === null ? null : c / 100; }) }));
+  if (r.a || r.b) return [{ field: 'Amount', values: [r.a, r.b].map(e => e && Number.isFinite(e.amount) ? e.amount / 100 : null) }];
+  return [];
+}
+
 // Counts per table as an array; old two-table records stored {a, b}.
 const countList = counts => Array.isArray(counts) ? counts : counts && typeof counts === 'object' ? [counts.a, counts.b].filter(v => v !== undefined) : [];
 

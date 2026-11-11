@@ -1,7 +1,7 @@
 import { reconcile } from './reconcile.js';
 import { reconcileTables, exceptionSignature, stableStringify } from './multi.js';
 import { exceptionText } from './defaults.js';
-import { issueDescription, issueSummary } from './describe.js';
+import { issueDescription, issueSummary, amountsOf } from './describe.js';
 export const MAX_SAVED_EXCEPTIONS = 200;
 
 export function createService({ store, jira, confluence, loadAttachment, uuid, digest, now }) {
@@ -74,12 +74,6 @@ export function createService({ store, jira, confluence, loadAttachment, uuid, d
     const files = await Promise.all(payload.sources.map(input => source(s, input)));
     const result = payload.config ? reconcileTables(files, payload.config) : reconcile(files[0], files[1], payload.mappings, payload.rules);
     return persist(s, payload, result, files, true);
-  }
-  // Per-table amounts (in currency units) for the first number fields, kept so issue descriptions can show them.
-  function amountsOf(r, config) {
-    if (r.entries) return (config?.fields || []).filter(f => f.type === 'number').slice(0, 3).map(f => ({ field: String(f.name).slice(0, 60), values: r.entries.map(e => e && Number.isFinite(e.values?.[f.id]) ? e.values[f.id] / 100 : null) }));
-    if (r.a || r.b) return [{ field: 'Amount', values: [r.a, r.b].map(e => e && Number.isFinite(e.amount) ? e.amount / 100 : null) }];
-    return [];
   }
   async function persist(s, payload, result, files, serverVerified = false) {
     const templateName = payload.templateName || '';

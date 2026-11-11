@@ -99,6 +99,11 @@ function fieldValue(raw, f, t, location) {
   return parsed;
 }
 // Object property order is not evidence; arrays retain table, field and row order.
+// What the panel sends to saveRun: only exceptions, entries cut down to values (own values kept so amounts match the result table).
+export function compactResult(output, limit = 200) {
+  return { ...output, results: output.results.filter(r => r.status !== 'matched').slice(0, limit).map(r => ({ ...r, entries: r.entries.map(e => e ? { values: e.values, components: e.components.map(c => ({ values: c.values })) } : null) })) };
+}
+
 export function stableStringify(value) {
   return JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 }

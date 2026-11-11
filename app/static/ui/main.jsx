@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke, view, router } from '@forge/bridge';
 import { DEFAULT_RULES, STATUSES } from '../../src/reconcile.js';
-import { mappingSuggestions, PASSES } from '../../src/multi.js';
+import { mappingSuggestions, compactResult, PASSES } from '../../src/multi.js';
 import { ATTACHMENTS_CHANGED, attachmentSnapshot, auditSelectionText, confirmCreateText, defaultIssueType, exceptionText, issueResultText, planStart } from '../../src/defaults.js';
 import './style.css';
 import { latestPreview } from './preview-state.js';
@@ -101,7 +101,7 @@ function App() {
     if (!mappingConfirmed) throw new Error('Review and confirm column mapping before running. Low-confidence columns need a manual choice.');
     const output = await workerTask({ operation: 'run', files, config: nextConfig });
     if (sources.every(s => !s.local)) {
-      const compact = { ...output, results: output.results.filter(r => r.status !== 'matched').slice(0, 200).map(r => ({ ...r, entries: r.entries.map(e => e ? { components: e.components.map(c => ({ values: c.values })) } : null) })) };
+      const compact = compactResult(output);
       const saved = await invoke('saveRun', { sources, config: nextConfig, templateName, note: runNote, result: compact });
       const byId = new Map(saved.reviews.map(r => [r.id, r]));
       output.results = output.results.map(r => ({ ...r, ...byId.get(r.id) }));
