@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ ...(process.env.RECONCILE_BROWSER === 'edge' ? { channel: 'msedge' } : {}), headless: true });
 const errors = [];
 const typeHint = 'This project has no issue type named Task. Choose an issue type from the list.';
 async function open(patch) {
@@ -32,6 +32,7 @@ try {
   assert.deepEqual(await sources(manual), ['', '', '']);
   await manual.getByLabel('Source A', { exact: true }).selectOption('0');
   await manual.getByLabel('Source B', { exact: true }).selectOption('1');
+  await manual.getByLabel('Source C', { exact: true }).selectOption('2');
   await manual.getByRole('button', { name: 'Load selected sources', exact: true }).click(); await settle(manual);
   assert.equal(await manual.getByText(hint, { exact: true }).count(), 0);
   await manual.close();

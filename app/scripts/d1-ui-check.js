@@ -48,8 +48,10 @@ try {
   assert.equal(await page.locator('.card.source').count(), 2);
   // Real Worker + checkbox + download + ExcelJS read-back using supplied domestic examples.
   await page.locator('input[type=file]').nth(0).setInputFiles('../examples/domestic/domestic-clean.csv');
-  await page.locator('.file-meta strong').first().waitFor();
+  // Reset already loaded attachment metadata; wait for each local parse, not the old file-name element.
+  await page.locator('.card.source').nth(0).getByText('domestic-clean.csv', { exact: true }).waitFor(); await settle();
   await page.locator('input[type=file]').nth(1).setInputFiles('../examples/domestic/domestic-gbk.csv');
+  await page.locator('.card.source').nth(1).getByText('domestic-gbk.csv', { exact: true }).waitFor(); await settle();
   await button('Confirm column mapping').waitFor(); await settle();
   await page.getByLabel('Ignore leading zeros in keys', { exact: true }).check();
   await button('Confirm column mapping').click(); await button('Run reconciliation').click();

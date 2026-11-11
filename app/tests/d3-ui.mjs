@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ ...(process.env.RECONCILE_BROWSER === 'edge' ? { channel: 'msedge' } : {}), headless: true });
 const page = await browser.newPage();
 const hint = 'Restored from your last session. Please re-check sources and worksheets, or click Reset.';
 const button = name => page.getByRole('button', { name, exact: true });

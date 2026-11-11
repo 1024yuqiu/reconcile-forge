@@ -116,8 +116,11 @@ try {
   assert.equal(await create.locator('.exceptions').getByText(text, { exact: true }).count(), 1);
   assert.doesNotMatch(await create.locator('main').innerText(), /Created: none|Reused: none/);
   await button(create, 'Load audit trail').click(); await idle(create);
-  const event = create.locator('.audit-events article').filter({ has: create.getByRole('heading', { name: 'issue-confirmation', exact: true }) }).last();
-  assert.match(await event.innerText(), /(Created|Reused) Issue: \S+/);
+  const confirmation = create.locator('.audit-events article').filter({ has: create.getByRole('heading', { name: 'issue-confirmation', exact: true }) }).last();
+  assert.match(await confirmation.innerText(), /Selected exceptions: 1 · Exception #2 \(key 3\) · Confirmed: true · Grouped: true/);
+  // Confirmation records the selection; the separate result event records the created/reused issue keys.
+  const event = create.locator('.audit-events article').filter({ has: create.getByRole('heading', { name: 'issue-result', exact: true }) }).last();
+  assert.ok((await event.innerText()).includes(text));
   assert.doesNotMatch(await event.innerText(), /Created:|Reused:/);
   await create.close();
 
