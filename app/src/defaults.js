@@ -99,3 +99,39 @@ export function auditSelectionText(event) {
   const list = Array.isArray(event?.selected) ? event.selected.map(e => exceptionText({ id: e.id, label: e.key })).join('; ') : `Exception IDs: ${ids.map(id => `#${id}`).join(', ')}`;
   return `Selected exceptions: ${ids.length} · ${list} · Confirmed: ${String(event.confirmed)} · Grouped: ${String(event.grouped)} · Project: ${event.project} · Type: ${event.issueType}`;
 }
+
+// Hint for the 'manual' start. Three attachments whose names are not ledger / bank / invoices get a specific reason;
+// any other count keeps the general text.
+export const MANUAL_THREE = "File names couldn't be identified as ledger / bank / invoices. Please choose sources A/B/C manually.";
+export const manualHint = count => count === 3
+  ? MANUAL_THREE
+  : `This issue has ${count} attachments, so sources were not auto-selected. Choose A / B / C manually (for the three-table sample: ledger as A), then click Load selected sources.`;
+
+// Session record saved in sessionStorage: sources, the mapping config, the two option checkboxes that are easy to lose
+// (Ignore leading zeros in keys, Aggregate per table) and whether the column mapping was confirmed.
+export const sessionOptions = config => ({ leadingZeros: Boolean(config?.keyRules?.leadingZeros), aggregate: (config?.aggregate || []).map(Boolean) });
+export function sessionRecord({ sources, config, mappingConfirmed, attachments }) {
+  return { sources, config, options: config ? sessionOptions(config) : null, mappingConfirmed: Boolean(config && mappingConfirmed), attachments };
+}
+export const OPTIONS_RECHECK = 'This older session did not store the checkboxes, so "Ignore leading zeros in keys" and "Aggregate" were reset. Please re-check them.';
+
+// A saved config is reused only when it still fits the loaded tables: same table count, and every mapped column exists.
+function fits(config, files) {
+  if (!config || !Array.isArray(files) || files.some(f => !f)) return false;
+  const n = files.length, has = (i, c) => c === '' || files[i].headers.includes(c);
+  return Array.isArray(config.keys) && config.keys.length === n && config.keys.every((keys, i) => Array.isArray(keys) && keys.every(k => has(i, k)))
+    && Array.isArray(config.fields) && config.fields.every(f => Array.isArray(f.columns) && f.columns.length === n && f.columns.every((c, i) => has(i, c)))
+    && Array.isArray(config.aggregate) && config.aggregate.length === n && config.keyRules && typeof config.keyRules === 'object';
+}
+// Returns { config, mappingConfirmed, optionsReset } for restoring a session after loading files. config is null when the
+// saved one does not fit (the caller keeps its fresh proposal). Sessions saved before 4.1.5 have no options: defaults are used.
+export function restoreSession(previous, files, fresh) {
+  if (!fits(previous?.config, files)) return { config: null, mappingConfirmed: false, optionsReset: false };
+  const stored = previous.options && typeof previous.options === 'object' ? previous.options : null;
+  const n = files.length;
+  const options = stored
+    ? { leadingZeros: Boolean(stored.leadingZeros), aggregate: Array.from({ length: n }, (_, i) => Boolean(stored.aggregate?.[i])) }
+    : { leadingZeros: Boolean(fresh?.keyRules?.leadingZeros), aggregate: Array.from({ length: n }, (_, i) => Boolean(fresh?.aggregate?.[i])) };
+  const config = { ...previous.config, keyRules: { ...previous.config.keyRules, leadingZeros: options.leadingZeros }, aggregate: options.aggregate };
+  return { config, mappingConfirmed: Boolean(stored) && previous.mappingConfirmed === true, optionsReset: !stored };
+}

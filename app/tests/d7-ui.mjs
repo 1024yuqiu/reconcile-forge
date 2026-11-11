@@ -1,4 +1,4 @@
-// 4.1.4 UI checks. Needs the mock preview server: npm run preview (http://127.0.0.1:4178), then node tests/d7-ui.mjs
+// 4.1.5 UI checks (manual hint for 3 vs 4 attachments updated). Needs the mock preview server: npm run preview (http://127.0.0.1:4178), then node tests/d7-ui.mjs
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({ ...(process.env.RECONCILE_BROWSER === 'edge' ? { channel: 'msedge' } : {}), headless: true });
@@ -7,7 +7,8 @@ const HEADING = 'Your exports. One clear answer.';
 const CHANGED = 'Attachments changed since your last session, so sources were re-checked.';
 const AUTO = "Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset.";
 const SESSION = 'Restored from your last session. Please re-check sources and worksheets, or click Reset.';
-const MANUAL = 'This issue has 3 attachments, so sources were not auto-selected. Choose A / B / C manually (for the three-table sample: ledger as A), then click Load selected sources.';
+const MANUAL = "File names couldn't be identified as ledger / bank / invoices. Please choose sources A/B/C manually.";
+const MANUAL4 = 'This issue has 4 attachments, so sources were not auto-selected. Choose A / B / C manually (for the three-table sample: ledger as A), then click Load selected sources.';
 const ATTACH = "files.map((f, i) => ({ id: String(i), name: f.name, size: 18000 }))";
 async function open(patch = text => text, url = 'http://127.0.0.1:4178/?three-tables') {
   const page = await browser.newPage(); page.setDefaultTimeout(20000);
@@ -74,7 +75,7 @@ try {
   // an attachment is added: four attachments cannot be told apart, so the manual hint appears with the changed line
   await page.evaluate(() => localStorage.setItem('d7-extra', '1')); await page.reload();
   await page.getByText(CHANGED, { exact: true }).waitFor();
-  await page.getByText(MANUAL.replace('3 attachments', '4 attachments'), { exact: true }).waitFor();
+  await page.getByText(MANUAL4, { exact: true }).waitFor();
   assert.equal(await page.getByText(SESSION, { exact: true }).count(), 0);
   assert.deepEqual(await values(page), ['', '', '']);
   // back to the three files, then one attachment removed: two remain, re-selected from the current attachments with the changed line

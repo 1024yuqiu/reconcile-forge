@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { invoke, view, router } from '@forge/bridge';
 import { DEFAULT_RULES, STATUSES } from '../../src/reconcile.js';
 import { mappingSuggestions, compactResult, PASSES } from '../../src/multi.js';
-import { ATTACHMENTS_CHANGED, attachmentSnapshot, auditSelectionText, confirmCreateText, defaultIssueType, exceptionText, issueResultText, planStart } from '../../src/defaults.js';
+import { ATTACHMENTS_CHANGED, attachmentSnapshot, auditSelectionText, confirmCreateText, defaultIssueType, exceptionText, issueResultText, manualHint, OPTIONS_RECHECK, planStart, restoreSession, sessionRecord } from '../../src/defaults.js';
 import './style.css';
 import { latestPreview } from './preview-state.js';
 import { version } from '../../package.json';
@@ -35,7 +35,7 @@ function App() {
   const working = useRef(false), sessionKey = useRef(null);
   const [restored, setRestored] = useState(''), [attachmentsChanged, setAttachmentsChanged] = useState(false), [identifying, setIdentifying] = useState(true), [createResult, setCreateResult] = useState('');
   const snapshot = useRef([]);
-  const [previewLoading, setPreviewLoading] = useState(false), [sessionReady, setSessionReady] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false), [sessionReady, setSessionReady] = useState(false), [optionsReset, setOptionsReset] = useState(false);
   const previewRequests = useRef(latestPreview());
   async function action(fn) { if (working.current) return; working.current = true; setBusy(true); setError(''); setNotice(''); try { await fn(); } catch (e) { setError(e.message); } finally { working.current = false; setBusy(false); } }
   function invalidate() { setResult(null); setSelected([]); setConfirm(false); setCreateResult(''); setReviewId(''); setAudit(null); setReport(null); }
@@ -51,6 +51,7 @@ function App() {
     }
     if (!request.current()) return;
     setFiles(next); setSources(nextSources.map((s, i) => ({ ...s, sheet: next[i].sheet }))); setConfig(initialConfig(next)); invalidate();
+    return next;
     } catch (error) { if (!request.current()) return; setConfig(null); setFiles(nextSources.map(() => null)); throw error; }
     finally { if (request.current()) setPreviewLoading(false); }
   }
@@ -59,10 +60,14 @@ function App() {
     setAttachmentsChanged(plan.changed); setSources(plan.sources); setFiles(plan.sources.map(() => null));
     if (plan.mode === 'session' || plan.mode === 'attachments') {
       setIdentifying(false);
-      await load(plan.sources);
+      const loaded = await load(plan.sources);
       setRestored(plan.mode === 'session' ? 'session' : 'attachments');
-      if (plan.mode === 'session' && previous.config?.keys?.length === plan.sources.length) setConfig(previous.config);
-      setMappingConfirmed(false);
+      setOptionsReset(false); setMappingConfirmed(false);
+      if (plan.mode === 'session' && loaded) {
+        // Put back the mapping, the two option checkboxes and the confirmed state, so Run works right after a refresh.
+        const back = restoreSession(previous, loaded, initialConfig(loaded));
+        if (back.config) { setConfig(back.config); setMappingConfirmed(back.mappingConfirmed); setOptionsReset(back.optionsReset); }
+      }
     } else setRestored(plan.mode === 'manual' ? 'manual' : '');
   }
   useEffect(() => { action(async () => {
@@ -80,9 +85,9 @@ function App() {
     if (!sessionReady || !sessionKey.current || busy) return;
     try {
       if (sources.some(s => s.local || (!s.id && s.kind !== 'jql'))) sessionStorage.removeItem(sessionKey.current);
-      else sessionStorage.setItem(sessionKey.current, JSON.stringify({ sources, config, attachments: snapshot.current }));
+      else sessionStorage.setItem(sessionKey.current, JSON.stringify(sessionRecord({ sources, config, mappingConfirmed, attachments: snapshot.current })));
     } catch {}
-  }, [sources, config, busy, sessionReady]);
+  }, [sources, config, mappingConfirmed, busy, sessionReady]);
   // Reset returns to the state of a first open: attachments are read again and sources are chosen the same way.
   function reset() { action(async () => {
     previewRequests.current.begin(); setPreviewLoading(false);
@@ -147,7 +152,7 @@ function App() {
         const next = files.map((f, j) => i === j ? parsed : f); setFiles(next); setSources(s => s.map((v, j) => i === j ? { id: '', local: true, bytes, name: file.name } : v)); if (next.every(Boolean)) setConfig(initialConfig(next)); invalidate();
       }); }}/></label>}
     </div>)}</div>
-    <div className="source-actions"><button disabled={busy} onClick={reset}>Reset</button><button disabled={busy || sources.some(s => !s.local && s.kind !== 'jql' && !s.id)} onClick={() => action(() => { setRestored(''); return load(sources); })}>Load selected sources</button><button disabled={busy || sources.length === 5} onClick={() => { setConfig(null); setMappingConfirmed(false); setSources(s => [...s, { id: '' }]); setFiles(f => [...f, null]); invalidate(); }}>Add table</button><span className="hint">2–5 CSV / XLSX tables · Attached file limit 2 MB</span></div>{restored && <div className="alert" role="status">{restored === 'session' ? 'Restored from your last session. Please re-check sources and worksheets, or click Reset.' : restored === 'manual' ? `This issue has ${boot?.attachments.length} attachments, so sources were not auto-selected. Choose A / B / C manually (for the three-table sample: ledger as A), then click Load selected sources.` : "Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset."}</div>}{attachmentsChanged && <div className="alert" role="status">{ATTACHMENTS_CHANGED}</div>}</>}</section>
+    <div className="source-actions"><button disabled={busy} onClick={reset}>Reset</button><button disabled={busy || sources.some(s => !s.local && s.kind !== 'jql' && !s.id)} onClick={() => action(() => { setRestored(''); return load(sources); })}>Load selected sources</button><button disabled={busy || sources.length === 5} onClick={() => { setConfig(null); setMappingConfirmed(false); setSources(s => [...s, { id: '' }]); setFiles(f => [...f, null]); invalidate(); }}>Add table</button><span className="hint">2–5 CSV / XLSX tables · Attached file limit 2 MB</span></div>{restored && <div className="alert" role="status">{restored === 'session' ? 'Restored from your last session. Please re-check sources and worksheets, or click Reset.' : restored === 'manual' ? manualHint(boot?.attachments.length) : "Sources were auto-selected from this issue's attachments. Please re-check sources and worksheets, or click Reset."}</div>}{restored === 'session' && optionsReset && <div className="alert" role="status">{OPTIONS_RECHECK}</div>}{attachmentsChanged && <div className="alert" role="status">{ATTACHMENTS_CHANGED}</div>}</>}</section>
     {files.every(Boolean) && config && <section className="card mapping"><fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}><h2><span className="step">2</span> Map columns & set rules</h2>
       <div className="template"><label>Project / space template<select aria-label="Saved template" disabled={busy} value="" onChange={e => { const t = boot.templates.find(t => t.name === e.target.value); if (t) action(() => applyTemplate(t)); }}><option value="">Select saved rules</option>{boot?.templates.map(t => <option key={t.name}>{t.name}</option>)}</select></label><label>Template name<input value={templateName} maxLength={80} onChange={e => { setTemplateName(e.target.value); }}/></label><button disabled={busy || !mappingConfirmed} onClick={() => action(async () => { const templates = await invoke('saveTemplate', { name: templateName, config, sources: sources.map(s => ({ sheet: s.sheet })) }); setBoot({ ...boot, templates }); setNotice('Template saved for this project or space.'); })}>Save template</button></div>
       <div className="card" aria-label="Column mapping suggestions"><h3>Column mapping suggestions</h3><p>{mappingConfirmed ? 'Column mapping confirmed. Selecting a saved template confirms its previously saved mapping.' : 'Proposals only: review columns and sample values, then confirm. Low-confidence proposals are left blank for a manual choice.'}</p>{!mappingConfirmed && <ul>{mappingAdvice.map((a, i) => <li key={i}>Table {letter(a.table)} · {a.target} → {a.source} · <b>{a.confidence}</b> · {a.reason}</li>)}</ul>}<button disabled={busy || mappingConfirmed || config.keys.some(keys => keys.some(key => !key)) || config.fields.some(f => f.type !== 'ignore' && f.columns.some(column => !column))} onClick={() => { setMappingConfirmed(true); setNotice('Column mapping confirmed. You can now save these rules or run reconciliation.'); }}>Confirm column mapping</button></div>

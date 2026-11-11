@@ -23,7 +23,7 @@ try {
 
   // 2. Names that cannot be told apart are not auto-selected; the panel asks for manual A/B/C choices.
   const manual = await open(text => text.replace('name: f.name, size: 18000', "name: 'data' + i + '.csv', size: 18000"));
-  const hint = 'This issue has 3 attachments, so sources were not auto-selected. Choose A / B / C manually (for the three-table sample: ledger as A), then click Load selected sources.';
+  const hint = "File names couldn't be identified as ledger / bank / invoices. Please choose sources A/B/C manually.";
   await manual.getByText(hint, { exact: true }).waitFor();
   assert.deepEqual(await sources(manual), ['', '', '']);
   await manual.getByRole('button', { name: 'Reset', exact: true }).click();

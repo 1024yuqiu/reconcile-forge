@@ -5,6 +5,7 @@ import { createService } from '../src/service.js';
 import { suggestFields, reconcileTables, compactResult } from '../src/multi.js';
 import { DEFAULT_RULES } from '../src/reconcile.js';
 import { adfText, amountsOf, entryCents } from '../src/describe.js';
+import { MANUAL_THREE, OPTIONS_RECHECK, manualHint, planStart, restoreSession, sessionRecord, blankSources } from '../src/defaults.js';
 
 // 4.1.5 item 1: the panel saves a compact result (entries cut down); amounts in the issue description must still match the result table.
 const fixture = () => {
@@ -77,4 +78,60 @@ test('entryCents: own values, aggregated components, legacy compact entries (com
   assert.equal(entryCents(null, 'f'), null);
   assert.equal(entryCents({ components: [] }, 'f'), null);
   assert.equal(entryCents({ components: [{ values: {} }] }, 'f'), null);
+});
+
+// 4.1.5 item 2: the two checkboxes and the confirmed mapping are stored with the session and restored.
+const tables = () => fixture().files;
+const freshConfig = files => ({ ...suggestFields(files), baseIndex: 0, keyRules: { ...DEFAULT_RULES, leadingZeros: false }, aggregate: files.map(() => false), acceptedPairs: [] });
+const refresh = record => JSON.parse(JSON.stringify(record)); // sessionStorage round trip
+
+test('session: leading zeros, Aggregate C and the confirmed mapping survive a refresh', () => {
+  const files = tables(), config = freshConfig(files);
+  const edited = { ...config, keyRules: { ...config.keyRules, leadingZeros: true }, aggregate: [false, false, true] };
+  const record = refresh(sessionRecord({ sources: [{ id: '0' }, { id: '1' }, { id: '2' }], config: edited, mappingConfirmed: true, attachments: [] }));
+  assert.deepEqual(record.options, { leadingZeros: true, aggregate: [false, false, true] }); assert.equal(record.mappingConfirmed, true);
+  const back = restoreSession(record, files, freshConfig(files));
+  assert.equal(back.config.keyRules.leadingZeros, true); assert.deepEqual(back.config.aggregate, [false, false, true]);
+  assert.deepEqual(back.config.keys, edited.keys); assert.deepEqual(back.config.fields, edited.fields);
+  assert.equal(back.mappingConfirmed, true); assert.equal(back.optionsReset, false); // Run is available without Confirm
+});
+test('session: an unconfirmed mapping stays unconfirmed, with the checkboxes kept', () => {
+  const files = tables(), config = { ...freshConfig(files), aggregate: [true, false, false] };
+  const back = restoreSession(refresh(sessionRecord({ sources: [], config, mappingConfirmed: false, attachments: [] })), files, freshConfig(files));
+  assert.equal(back.mappingConfirmed, false); assert.deepEqual(back.config.aggregate, [true, false, false]);
+});
+test('session: an older record without options uses defaults, is never confirmed, and asks for a re-check', () => {
+  const files = tables(), config = { ...freshConfig(files), keyRules: { ...DEFAULT_RULES, leadingZeros: true }, aggregate: [true, true, true] };
+  const old = refresh({ sources: [], config, attachments: [] }); // 4.1.4 shape
+  const back = restoreSession(old, files, freshConfig(files));
+  assert.equal(back.config.keyRules.leadingZeros, false); assert.deepEqual(back.config.aggregate, [false, false, false]);
+  assert.equal(back.mappingConfirmed, false); assert.equal(back.optionsReset, true);
+  assert.match(OPTIONS_RECHECK, /re-check/);
+});
+test('session: a saved config that no longer fits the loaded tables is ignored', () => {
+  const files = tables(), config = freshConfig(files);
+  const record = refresh(sessionRecord({ sources: [], config, mappingConfirmed: true, attachments: [] }));
+  assert.equal(restoreSession(record, files.slice(0, 2), freshConfig(files)).config, null);
+  const renamed = files.map(f => ({ ...f, headers: f.headers.map(h => h + 'x') }));
+  const back = restoreSession(record, renamed, freshConfig(renamed));
+  assert.equal(back.config, null); assert.equal(back.mappingConfirmed, false);
+  assert.equal(restoreSession(null, files, config).config, null);
+  assert.deepEqual(sessionRecord({ sources: [], config: null, mappingConfirmed: true, attachments: [] }).options, null);
+});
+
+// 4.1.5 item 3: three unrecognised attachments get the file-name reason; other counts keep the general text.
+test('manual hint: three attachments with unknown names -> file-name reason', () => {
+  const three = ['data0.csv', 'data1.csv', 'data2.csv'].map((name, id) => ({ id: String(id), name }));
+  const plan = planStart(three, null);
+  assert.equal(plan.mode, 'manual'); assert.equal(plan.sources.length, 3);
+  assert.equal(manualHint(three.length), "File names couldn't be identified as ledger / bank / invoices. Please choose sources A/B/C manually.");
+  assert.equal(MANUAL_THREE, manualHint(3));
+  assert.ok(!manualHint(3).includes('attachments, so'));
+});
+test('manual hint: four attachments keep the count text', () => {
+  const four = ['a', 'b', 'c', 'd'].map((n, id) => ({ id: String(id), name: n + '.csv' }));
+  assert.equal(planStart(four, null).mode, 'manual');
+  assert.equal(manualHint(4), 'This issue has 4 attachments, so sources were not auto-selected. Choose A / B / C manually (for the three-table sample: ledger as A), then click Load selected sources.');
+  assert.match(manualHint(6), /^This issue has 6 attachments, so sources were not auto-selected\./);
+  assert.equal(blankSources(four).length, 3);
 });
